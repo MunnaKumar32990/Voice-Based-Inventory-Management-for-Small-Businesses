@@ -326,11 +326,11 @@ class NLPService:
             return ParsedCommand(intent="LOW_STOCK_QUERY", confidence=1.0)
 
         # 6. List Products Added (which/what products added ...)
-        if re.search(r'\b(which\s+products|what\s+products|what\s+was|kaunse\s+product|kaun\s+kaun\s+se\s+product|kya\s+add\s+hua|ae\s+products)\b.*?\b(added|add|jode|aaye)\b', text):
+        if re.search(r'\b(which\s+products|what\s+products|what\s+was|kaunse\s+product|kaun\s+kaun\s+se\s+product|kya\s+add\s+hua|ae\s+products)\b.*?\b(added|add|entered|jode|aaye)\b', text):
             return ParsedCommand(intent="LIST_PRODUCTS_ADDED", time_range=time_range or "today", confidence=1.0)
 
-        # 7. Count Products Added (how many products added ...)
-        if re.search(r'\b(how\s+many\s+products|how\s+many\s+items|kitne\s+product|kitne\s+items?|enni\s+products?).*?\b(added|add|jode|chadhe|aaye)\b', text):
+        # 7. Count Products Added (how many products added / total products entered ...)
+        if re.search(r'\b(how\s+many\s+products|how\s+many\s+items|kitne\s+product|kitne\s+items?|enni\s+products?|total\s+products?|total\s+items?|total\s+saman).*?\b(added|add|entered|jode|chadhe|aaye)\b', text):
             return ParsedCommand(intent="COUNT_PRODUCTS_ADDED", time_range=time_range or "today", confidence=1.0)
 
         # 8. Count Transactions (Stock-in / Stock-out)

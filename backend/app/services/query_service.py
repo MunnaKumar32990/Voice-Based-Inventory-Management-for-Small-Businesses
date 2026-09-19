@@ -163,8 +163,9 @@ class QueryService:
         transcript: str,
         language: str = "en",
     ) -> Dict[str, Any]:
-        """Conversational database assistant that answers arbitrary store questions
-        directly using a live MongoDB snapshot of products, balances, transactions, and alerts.
+        """Conversational database assistant that answers ANY store question
+        using a comprehensive live MongoDB snapshot including per-product
+        transaction summaries, recent transaction log, and inventory state.
         """
         clean_text = transcript.strip() if transcript else ""
         shop = await db.shops.find_one({"_id": _safe_oid(shop_id)})
@@ -177,6 +178,8 @@ class QueryService:
         products = await db.products.find({"shop_id": shop_id, "active": True}).to_list(length=200)
         balances = await db.stock_balances.find({"shop_id": shop_id}).to_list(length=200)
         bmap = {str(b.get("product_id")): b for b in balances}
+        pmap = {str(p["_id"]): p for p in products}
+        name_map = {str(p["_id"]): p.get("display_name", p.get("name", "")) for p in products}
 
         catalog = []
         low_stock_items = []
@@ -203,49 +206,145 @@ class QueryService:
                 "status": status,
             })
 
-        # 2. Fetch today's activity
-        bounds = resolve_date_range("today", shop_tz)
-        time_cond = {"$or": [
-            {"timestamp": {"$gte": bounds[0], "$lte": bounds[1]}},
-            {"created_at": {"$gte": bounds[0], "$lte": bounds[1]}},
-        ]} if bounds else {}
+        # 2. Fetch TODAY's activity counts
+        today_bounds = resolve_date_range("today", shop_tz)
+        today_cond = {"$or": [
+            {"timestamp": {"$gte": today_bounds[0], "$lte": today_bounds[1]}},
+            {"created_at": {"$gte": today_bounds[0], "$lte": today_bounds[1]}},
+        ]} if today_bounds else {}
 
-        in_count = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_IN", **time_cond})
-        out_count = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_OUT", **time_cond})
-        prod_count = await db.products.count_documents({"shop_id": shop_id, "active": True, "created_at": {"$gte": bounds[0], "$lte": bounds[1]}}) if bounds else 0
+        today_in = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_IN", **today_cond})
+        today_out = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_OUT", **today_cond})
+        today_prod_added = await db.products.count_documents(
+            {"shop_id": shop_id, "active": True, "created_at": {"$gte": today_bounds[0], "$lte": today_bounds[1]}}
+        ) if today_bounds else 0
 
-        # 3. If Gemini is configured, use it for zero-shot natural understanding over DB
+        # 3. Fetch THIS WEEK's activity counts
+        week_bounds = resolve_date_range("this_week", shop_tz)
+        week_cond = {"$or": [
+            {"timestamp": {"$gte": week_bounds[0], "$lte": week_bounds[1]}},
+            {"created_at": {"$gte": week_bounds[0], "$lte": week_bounds[1]}},
+        ]} if week_bounds else {}
+        week_in = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_IN", **week_cond})
+        week_out = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_OUT", **week_cond})
+
+        # 4. Fetch per-product transaction summaries (ALL TIME + TODAY)
+        all_txns = await db.transactions.find({"shop_id": shop_id}).to_list(length=5000)
+        per_product = {}
+        for tx in all_txns:
+            pid = str(tx.get("product_id", ""))
+            pname = name_map.get(pid, tx.get("product_name", pid))
+            if pname not in per_product:
+                per_product[pname] = {"total_in": 0, "total_out": 0, "total_in_qty": 0.0, "total_out_qty": 0.0,
+                                       "today_in": 0, "today_out": 0, "today_in_qty": 0.0, "today_out_qty": 0.0,
+                                       "unit": tx.get("unit", ""), "last_txn": None}
+            entry = per_product[pname]
+            op = tx.get("operation", "")
+            qty = float(tx.get("quantity", 0))
+            ts = tx.get("timestamp") or tx.get("created_at")
+            if op == "STOCK_IN":
+                entry["total_in"] += 1
+                entry["total_in_qty"] += qty
+            elif op == "STOCK_OUT":
+                entry["total_out"] += 1
+                entry["total_out_qty"] += qty
+            if ts:
+                if getattr(ts, "tzinfo", None) is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if entry["unit"] == "":
+                    entry["unit"] = tx.get("unit", "")
+                if entry["last_txn"] is None or ts > entry["last_txn"]:
+                    entry["last_txn"] = ts
+                # Check if today
+                if today_bounds and today_bounds[0] <= ts <= today_bounds[1]:
+                    if op == "STOCK_IN":
+                        entry["today_in"] += 1
+                        entry["today_in_qty"] += qty
+                    elif op == "STOCK_OUT":
+                        entry["today_out"] += 1
+                        entry["today_out_qty"] += qty
+
+        product_tx_summary = []
+        for pname, e in per_product.items():
+            product_tx_summary.append({
+                "product": pname,
+                "unit": e["unit"],
+                "all_time_stock_in": f"{e['total_in']} transactions ({_format_num(e['total_in_qty'])} {e['unit']})",
+                "all_time_stock_out": f"{e['total_out']} transactions ({_format_num(e['total_out_qty'])} {e['unit']})",
+                "today_stock_in": f"{e['today_in']} transactions ({_format_num(e['today_in_qty'])} {e['unit']})",
+                "today_stock_out": f"{e['today_out']} transactions ({_format_num(e['today_out_qty'])} {e['unit']})",
+            })
+
+        # 5. Fetch recent transactions (last 20) with product names
+        recent_txns_raw = await db.transactions.find(
+            {"shop_id": shop_id}
+        ).sort("timestamp", -1).limit(20).to_list(length=20)
+        recent_txns = []
+        for tx in recent_txns_raw:
+            pid = str(tx.get("product_id", ""))
+            pname = name_map.get(pid, tx.get("product_name", pid))
+            ts = tx.get("timestamp") or tx.get("created_at")
+            recent_txns.append({
+                "product": pname,
+                "operation": tx.get("operation", ""),
+                "quantity": _format_num(tx.get("quantity", 0)),
+                "unit": tx.get("unit", ""),
+                "time": ts.isoformat() if ts else "unknown",
+            })
+
+        # 6. Categories
         categories_list = sorted(list({p.get("category", "") for p in products if p.get("category")}))
+
+        # 7. Call Gemini with comprehensive snapshot
         api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
         if api_key:
             prompt = (
                 f"You are the intelligent database-aware voice assistant for '{shop_name}'.\n"
-                f"Your job is to answer the user's natural language question accurately and truthfulness based ONLY on the live database snapshot below.\n\n"
+                f"Answer the user's question ACCURATELY based ONLY on the live database snapshot below.\n"
+                f"The user may speak in English, Hindi, Hinglish, Telugu, or mix languages.\n"
+                f"ALWAYS respond in the SAME language/dialect the user speaks.\n\n"
                 f"--- LIVE DATABASE SNAPSHOT ---\n"
                 f"Total Active Products: {len(products)}\n"
-                f"Product Categories: {json.dumps(categories_list)}\n"
-                f"Products Catalog: {json.dumps(catalog[:40])}\n"
-                f"Today's Activity: {in_count} stock-in transactions, {out_count} stock-out transactions, {prod_count} products added today\n"
+                f"Product Categories ({len(categories_list)}): {json.dumps(categories_list)}\n"
+                f"Products Catalog (name, category, current_stock, unit, reorder_threshold, status):\n{json.dumps(catalog[:40], indent=1)}\n\n"
+                f"--- TODAY'S ACTIVITY ---\n"
+                f"Today Stock-In Transactions: {today_in}\n"
+                f"Today Stock-Out Transactions: {today_out}\n"
+                f"Products Added Today: {today_prod_added}\n\n"
+                f"--- THIS WEEK'S ACTIVITY ---\n"
+                f"This Week Stock-In Transactions: {week_in}\n"
+                f"This Week Stock-Out Transactions: {week_out}\n\n"
+                f"--- PER-PRODUCT TRANSACTION SUMMARY ---\n"
+                f"{json.dumps(product_tx_summary[:40], indent=1)}\n\n"
+                f"--- RECENT TRANSACTIONS (latest 20) ---\n"
+                f"{json.dumps(recent_txns[:20], indent=1)}\n\n"
+                f"--- ALERTS ---\n"
                 f"Low Stock Items ({len(low_stock_items)}): {', '.join(low_stock_items) if low_stock_items else 'None'}\n"
                 f"Out of Stock Items ({len(out_of_stock_items)}): {', '.join(out_of_stock_items) if out_of_stock_items else 'None'}\n\n"
-                f"User Question: \"{clean_text}\"\n"
+                f"--- USER QUESTION ---\n"
+                f"Original transcript: \"{clean_text}\"\n"
                 f"Detected Language/Dialect: {language}\n\n"
-                f"Instructions:\n"
-                f"- If user asks about total products / how many products (e.g. 'total kitna products hai', 'how many products'), state total products ({len(products)}).\n"
-                f"- If user asks in Hindi / Hinglish, answer naturally in Hindi / Hinglish.\n"
-                f"- If user asks in Telugu / Telugish, answer in Telugu.\n"
-                f"- If user asks in English, answer in English.\n"
-                f"- Never say 'product not found' if they are asking an analytical, count, or summary question.\n"
-                f"- Output strictly valid JSON matching this schema:\n"
+                f"--- INSTRUCTIONS ---\n"
+                f"- Answer ANY question the user asks about the store's inventory, products, transactions, stock, categories, etc.\n"
+                f"- For product-specific queries like 'total rice added' or 'rice ki kitni transaction hui', use the PER-PRODUCT TRANSACTION SUMMARY.\n"
+                f"- For complex queries like 'total product entered today', count products added today ({today_prod_added}).\n"
+                f"- For 'which is lowest stock' / 'sabse kam stock kiska hai', look at current stock levels in the catalog.\n"
+                f"- If user asks in Hindi/Hinglish, reply in Hindi/Hinglish. If Telugu, reply in Telugu. If English, reply in English.\n"
+                f"- Never say 'product not found' or 'I don't know' if the data is in the snapshot.\n"
+                f"- Never invent data. Only use what's in the snapshot.\n"
+                f"- Output strictly valid JSON:\n"
                 f"{{\n"
-                f'  "title": "Short descriptive title for UI card",\n'
-                f'  "query_type": "COUNT_PRODUCTS" | "LIST_PRODUCTS" | "GET_PRODUCT_STOCK" | "GET_TODAY_ACTIVITY" | "CATEGORY_QUERY" | "GENERAL_QUERY",\n'
-                f'  "display_text": "Visual summary text with emoji for UI card",\n'
-                f'  "spoken_text": "Natural spoken sentence for TTS audio output",\n'
+                f'  "title": "Short descriptive title for UI card (max 6 words)",\n'
+                f'  "query_type": "COUNT_PRODUCTS" | "COUNT_PRODUCTS_ADDED" | "COUNT_TRANSACTIONS" | "LIST_PRODUCTS" | "GET_PRODUCT_STOCK" | "GET_TODAY_ACTIVITY" | "GET_TOP_STOCK_PRODUCTS" | "CATEGORY_QUERY" | "GENERAL_QUERY",\n'
+                f'  "display_text": "Visual summary text WITH emoji for UI card",\n'
+                f'  "spoken_text": "Natural conversational spoken sentence for TTS in same language as user",\n'
                 f'  "structured_data": {{\n'
                 f'    "count": number or null,\n'
-                f'    "items": array or null,\n'
-                f'    "entity": string or null\n'
+                f'    "items": [{{"product_name": "...", "quantity": number, "unit": "..."}}] or null,\n'
+                f'    "entity": string or null,\n'
+                f'    "today_stock_in": number or null,\n'
+                f'    "today_stock_out": number or null,\n'
+                f'    "products_added": number or null\n'
                 f'  }}\n'
                 f"}}\n"
             )
@@ -261,7 +360,7 @@ class QueryService:
                             "temperature": 0.1,
                         }
                     }
-                    async with httpx.AsyncClient(timeout=4.5) as client:
+                    async with httpx.AsyncClient(timeout=8.0) as client:
                         resp = await client.post(
                             url,
                             headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
@@ -285,7 +384,7 @@ class QueryService:
                 except Exception:
                     continue
 
-        # 4. Deterministic fallback if Gemini is offline
+        # 8. Deterministic fallback if Gemini is offline
         clean_lower = clean_text.lower()
         if any(w in clean_lower for w in ("category", "categories", "kis type", "types", "vibhag")):
             cat_str = ", ".join(categories_list)
@@ -306,6 +405,10 @@ class QueryService:
                 "message": spoken,
                 "structured_data": {"count": len(categories_list), "items": categories_list},
             }
+        if any(w in clean_lower for w in ("lowest", "minimum", "least", "sabse kam", "thakkuva")):
+            return await self._query_top_stock(db, shop_id, "lowest", language)
+        if any(w in clean_lower for w in ("highest", "maximum", "most", "sabse jyada", "ekkuva")):
+            return await self._query_top_stock(db, shop_id, "highest", language)
         if any(w in clean_lower for w in ("total", "product", "kitna", "kitne", "count", "kul", "motham")):
             return await self._query_count_products(db, shop_id, language)
         if any(w in clean_lower for w in ("activity", "aaj", "today", "hua", "movement")):
@@ -317,11 +420,11 @@ class QueryService:
 
         # General store summary fallback
         if language in ("hinglish", "hi", "hi_deva"):
-            spoken = f"Aapki dukan me kul {len(products)} products hain. Aaj {in_count} stock-in aur {out_count} stock-out transactions huye."
-            display = f"📦 {len(products)} Products | Aaj: {in_count} In, {out_count} Out"
+            spoken = f"Aapki dukan me kul {len(products)} products hain. Aaj {today_in} stock-in aur {today_out} stock-out transactions huye."
+            display = f"📦 {len(products)} Products | Aaj: {today_in} In, {today_out} Out"
         else:
-            spoken = f"You have {len(products)} products in your inventory. Today you had {in_count} stock-in and {out_count} stock-out transactions."
-            display = f"📦 {len(products)} Products | Today: {in_count} In, {out_count} Out"
+            spoken = f"You have {len(products)} products in your inventory. Today you had {today_in} stock-in and {today_out} stock-out transactions."
+            display = f"📦 {len(products)} Products | Today: {today_in} In, {today_out} Out"
 
         return {
             "status": "answered",
@@ -331,9 +434,9 @@ class QueryService:
             "message": spoken,
             "structured_data": {
                 "count": len(products),
-                "today_stock_in": in_count,
-                "today_stock_out": out_count,
-                "products_added": prod_count,
+                "today_stock_in": today_in,
+                "today_stock_out": today_out,
+                "products_added": today_prod_added,
             },
         }
 

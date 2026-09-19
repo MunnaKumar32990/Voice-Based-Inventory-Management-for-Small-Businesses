@@ -139,6 +139,23 @@ async def handle_voice_command(
 
     # 2. Handle analytical & reporting query intents directly (no confirmation needed)
     if parsed.intent in ANALYTICAL_INTENTS:
+        # If the query asks about a specific product's transactions/history/additions, delegate to database assistant
+        if parsed.product_text and any(w in req.transcript.lower() for w in ("transaction", "transactions", "added", "add", "sold", "aaya", "becha", "bikri", "history")):
+            db_res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
+            if db_res.get("status") == "answered":
+                return {
+                    "status": "answered",
+                    "intent": db_res.get("query_type", "GENERAL_QUERY"),
+                    "query_type": db_res.get("query_type", "GENERAL_QUERY"),
+                    "title": db_res.get("title", "Store Information"),
+                    "transcript": req.transcript,
+                    "detected_language": detected_lang,
+                    "message": db_res.get("message", ""),
+                    "display_text": db_res.get("display_text", ""),
+                    "answer": db_res.get("display_text", ""),
+                    "structured_data": db_res.get("structured_data", {}),
+                }
+
         params = {
             "time_range": parsed.time_range,
             "operation": parsed.operation,
@@ -198,7 +215,33 @@ async def handle_voice_command(
             "message": unk_msg,
         }
 
-    # 3. For stock mutations (STOCK_IN / STOCK_OUT), find product and prepare preview
+    # 3. For stock mutations (STOCK_IN / STOCK_OUT), verify it is truly a mutation
+    clean_lower = req.transcript.lower()
+    inquiry_keywords = (
+        "total", "how many", "how much", "kitna", "kitne", "kitni", "kya", "which",
+        "kaunsa", "kaunse", "kaun", "transaction", "transactions", "history", "record",
+        "batao", "dikhao", "show", "tell", "kiska", "kiski", "status", "overview",
+        "summary", "enni", "emiti", "cheppu", "kanipinchu", "added today", "entered today",
+        "sold today", "add hua", "becha gaya", "aaya tha", "jarigindi", "list"
+    )
+    is_inquiry = any(kw in clean_lower for kw in inquiry_keywords)
+
+    if is_inquiry and parsed.quantity is None:
+        db_res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
+        if db_res.get("status") == "answered":
+            return {
+                "status": "answered",
+                "intent": db_res.get("query_type", "GENERAL_QUERY"),
+                "query_type": db_res.get("query_type", "GENERAL_QUERY"),
+                "title": db_res.get("title", "Store Information"),
+                "transcript": req.transcript,
+                "detected_language": detected_lang,
+                "message": db_res.get("message", ""),
+                "display_text": db_res.get("display_text", ""),
+                "answer": db_res.get("display_text", ""),
+                "structured_data": db_res.get("structured_data", {}),
+            }
+
     if not parsed.product_text:
         return {"status": "error", "message": "I couldn't identify the product. Please try again.", "detected_language": detected_lang}
 
@@ -218,6 +261,21 @@ async def handle_voice_command(
         }
 
     if not match_res.product:
+        # Before failing with "product not found", consult the database assistant
+        db_res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
+        if db_res.get("status") == "answered":
+            return {
+                "status": "answered",
+                "intent": db_res.get("query_type", "GENERAL_QUERY"),
+                "query_type": db_res.get("query_type", "GENERAL_QUERY"),
+                "title": db_res.get("title", "Store Information"),
+                "transcript": req.transcript,
+                "detected_language": detected_lang,
+                "message": db_res.get("message", ""),
+                "display_text": db_res.get("display_text", ""),
+                "answer": db_res.get("display_text", ""),
+                "structured_data": db_res.get("structured_data", {}),
+            }
         return {
             "status": "error",
             "detected_language": detected_lang,
@@ -233,6 +291,21 @@ async def handle_voice_command(
     product_name = product.get("display_name", product.get("name", ""))
 
     if parsed.quantity is None:
+        if is_inquiry or any(w in clean_lower for w in ("kitna", "kitne", "kitni", "how", "total", "aaya", "hua", "gaya", "was")):
+            db_res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
+            if db_res.get("status") == "answered":
+                return {
+                    "status": "answered",
+                    "intent": db_res.get("query_type", "GENERAL_QUERY"),
+                    "query_type": db_res.get("query_type", "GENERAL_QUERY"),
+                    "title": db_res.get("title", "Store Information"),
+                    "transcript": req.transcript,
+                    "detected_language": detected_lang,
+                    "message": db_res.get("message", ""),
+                    "display_text": db_res.get("display_text", ""),
+                    "answer": db_res.get("display_text", ""),
+                    "structured_data": db_res.get("structured_data", {}),
+                }
         clarify_msg = f"How many {product_name}? Please specify the quantity."
         if detected_lang in ("hinglish", "hi", "hi_deva"):
             clarify_msg = f"{product_name} kitna? Kripya quantity batayein."
