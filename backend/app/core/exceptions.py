@@ -24,3 +24,7 @@ class AuthenticationError(Exception):
 
 class AuthorizationError(Exception):
     pass
+
+class ValidationError(Exception):
+    pass
+

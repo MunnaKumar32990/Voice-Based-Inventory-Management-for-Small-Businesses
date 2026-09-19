@@ -31,7 +31,7 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const url: string = error.config?.url || '';
-    const isAuthRequest = url.includes('/auth/demo-login') || url.includes('/auth/token');
+    const isAuthRequest = url.includes('/auth/demo-login') || url.includes('/auth/token') || url.includes('/auth/login') || url.includes('/auth/signup');
     // Don't logout for the login request itself — that would mask login errors
     // and create a logout loop. Only logout on authenticated calls.
     if (status === 401 && !isAuthRequest) {

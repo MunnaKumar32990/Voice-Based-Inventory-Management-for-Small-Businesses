@@ -13,6 +13,7 @@ const DESKTOP_LINKS = [
 
 export const Navbar: React.FC = () => {
   const shopName = useAuthStore((s) => s.shopName);
+  const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
@@ -44,9 +45,10 @@ export const Navbar: React.FC = () => {
               ))}
             </nav>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="hidden sm:block">
-              <span className="text-sm font-medium text-gray-500 mr-2">{shopName}</span>
+          <div className="flex items-center space-x-3">
+            <div className="hidden sm:flex flex-col text-right">
+              <span className="text-sm font-bold text-gray-900">{user?.name || 'Owner'}</span>
+              <span className="text-xs text-indigo-600 font-medium">{shopName || 'My Store'}</span>
             </div>
             <LanguageSelector />
             <NavLink
@@ -58,10 +60,12 @@ export const Navbar: React.FC = () => {
             </NavLink>
             <button 
               onClick={handleLogout}
-              className="p-2 text-gray-400 hover:text-gray-500 rounded-full hover:bg-gray-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-all"
               aria-label="Logout"
+              title="Sign Out"
             >
-              <LogOut className="h-5 w-5" />
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </div>

@@ -11,6 +11,9 @@ class User(BaseModel):
     id: OidStr = Field(alias="_id")
     shop_id: str
     name: str
+    email: str = ""
+    password_hash: str = ""
+    shop_name: str = ""
     phone: str = ""
     role: str = "owner"
     active: bool = True
