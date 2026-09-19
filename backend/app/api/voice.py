@@ -139,14 +139,20 @@ async def handle_voice_command(
 
     # 2. Handle analytical & reporting query intents directly (no confirmation needed)
     if parsed.intent in ANALYTICAL_INTENTS:
-        # If the query asks about a specific product's transactions/history/additions, delegate to database assistant
-        if parsed.product_text and any(w in req.transcript.lower() for w in ("transaction", "transactions", "added", "add", "sold", "aaya", "becha", "bikri", "history")):
+        # If the user asks for details, specific product names, or complex breakdowns, delegate to Gemini database assistant
+        detailed_inquiry_words = (
+            "detail", "details", "kaun", "kaunsa", "kaunse", "kya kya", "batao", "dikhao",
+            "which", "list", "name", "names", "bahar", "andar", "bika", "aaya", "update", "kiska"
+        )
+        is_detailed = any(w in req.transcript.lower() for w in detailed_inquiry_words)
+
+        if is_detailed or (parsed.product_text and any(w in req.transcript.lower() for w in ("transaction", "transactions", "added", "add", "sold", "aaya", "becha", "bikri", "history"))):
             db_res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
             if db_res.get("status") == "answered":
                 return {
                     "status": "answered",
-                    "intent": db_res.get("query_type", "GENERAL_QUERY"),
-                    "query_type": db_res.get("query_type", "GENERAL_QUERY"),
+                    "intent": db_res.get("query_type", parsed.intent),
+                    "query_type": db_res.get("query_type", parsed.intent),
                     "title": db_res.get("title", "Store Information"),
                     "transcript": req.transcript,
                     "detected_language": detected_lang,

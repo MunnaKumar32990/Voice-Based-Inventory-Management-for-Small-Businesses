@@ -562,13 +562,22 @@ export const VoiceModal: React.FC = () => {
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <Activity className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-gray-900 text-base">Today's Activity</h4>
+                    <h4 className="font-bold text-gray-900 text-base">{parsedCommand?.title || "Today's Activity"}</h4>
                   </div>
                   <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
-                    {structuredData.total_transactions ?? 0} transactions
+                    {(structuredData.today_stock_in ?? 0) + (structuredData.today_stock_out ?? 0)} transactions
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2.5 text-center">
+
+                {parsedCommand?.display_text && (
+                  <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl mb-3 text-left">
+                    <p className="text-sm font-semibold text-gray-900 leading-relaxed">
+                      {parsedCommand.display_text}
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2.5 text-center mb-3">
                   <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
                     <ArrowDownLeft className="w-4 h-4 text-emerald-600 mx-auto mb-1" />
                     <div className="text-2xl font-black text-emerald-800">
@@ -597,6 +606,36 @@ export const VoiceModal: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {Array.isArray(structuredData.items) && structuredData.items.length > 0 && (
+                  <div className="mt-3 text-left space-y-2 border-t border-slate-100 pt-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                      Product Breakdown
+                    </span>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {structuredData.items.map((item: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200/60 text-xs"
+                        >
+                          <span className="font-semibold text-gray-900">{item.product_name}</span>
+                          <div className="flex gap-2">
+                            {item.stock_in && item.stock_in !== '0' && (
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                                +{item.stock_in}
+                              </span>
+                            )}
+                            {item.stock_out && item.stock_out !== '0' && (
+                              <span className="text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded">
+                                -{item.stock_out}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
