@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from './components/layout/AppLayout';
+import { LandingPage } from './features/landing/LandingPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { VoiceButton } from './features/voice/VoiceButton';
@@ -12,6 +13,7 @@ import { ManualEntryPage } from './features/inventory/ManualEntryPage';
 import { AlertsPage } from './features/alerts/AlertsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { useAuthStore } from './stores/authStore';
+import { ToastProvider } from './components/ui/Toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,25 +35,33 @@ function VoiceOverlays() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/products" element={<ProductListPage />} />
-            <Route path="/products/new" element={<ProductFormPage />} />
-            <Route path="/products/:id/edit" element={<ProductFormPage />} />
-            <Route path="/transactions" element={<TransactionHistoryPage />} />
-            <Route path="/manual" element={<ManualEntryPage />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        
-        {/* Global Voice Components (authenticated only) */}
-        <VoiceOverlays />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public Landing & Auth Routes */}
+            <Route path="/landing" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+
+            {/* Authenticated Application Routes */}
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/products" element={<ProductListPage />} />
+              <Route path="/products/new" element={<ProductFormPage />} />
+              <Route path="/products/:id/edit" element={<ProductFormPage />} />
+              <Route path="/transactions" element={<TransactionHistoryPage />} />
+              <Route path="/manual" element={<ManualEntryPage />} />
+              <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+
+          {/* Global Voice Components (authenticated only) */}
+          <VoiceOverlays />
+        </BrowserRouter>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

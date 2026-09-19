@@ -3,13 +3,19 @@
 @theme {
   --color-primary-50: #eef2ff;
   --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
   --color-primary-500: #6366f1;
   --color-primary-600: #4f46e5;
   --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary-950: #1e1b4b;
 }
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -27,9 +33,10 @@ body {
   margin: 0;
   min-height: 100vh;
   color: #0f172a;
+  background-color: #f8fafc;
 }
 
-/* Base styles for larger touch targets */
+/* Base styles for accessible touch targets */
 button, 
 a, 
 input, 
@@ -37,7 +44,7 @@ select {
   min-height: 44px;
 }
 
-/* Hindi/Telugu font support - generic fallbacks that support these scripts well */
+/* Hindi/Telugu font support */
 .lang-hi, .lang-te {
   font-family: 'Noto Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -64,15 +71,31 @@ select {
 
 @keyframes voiceGlow {
   0%, 100% {
-    box-shadow: 0 0 15px rgba(99, 102, 241, 0.35), 0 0 30px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 18px rgba(99, 102, 241, 0.35), 0 0 35px rgba(99, 102, 241, 0.15);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 25px rgba(99, 102, 241, 0.65), 0 0 45px rgba(99, 102, 241, 0.3);
-    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.65), 0 0 55px rgba(99, 102, 241, 0.3);
+    transform: scale(1.04);
   }
 }
 
 .animate-voice-glow {
   animation: voiceGlow 1.8s ease-in-out infinite;
+}
+
+/* Glassmorphism and Card Hover Effects */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.card-hover-effect {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
 }

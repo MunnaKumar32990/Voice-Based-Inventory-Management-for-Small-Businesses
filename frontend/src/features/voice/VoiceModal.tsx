@@ -26,6 +26,7 @@ import { Input } from '../../components/ui/Input';
 import { VoiceVisualizer } from '../../components/ui/VoiceVisualizer';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { Badge } from '../../components/ui/Badge';
+import { useToast } from '../../components/ui/Toast';
 import { api } from '../../lib/api';
 import { UNITS } from '../../lib/constants';
 import { speakText, stopSpeech } from '../../lib/tts';
@@ -46,6 +47,8 @@ export const VoiceModal: React.FC = () => {
     setCommand,
   } = useVoiceStore();
   const queryClient = useQueryClient();
+  const { success } = useToast();
+
   const [editing, setEditing] = useState(false);
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
@@ -125,6 +128,8 @@ export const VoiceModal: React.FC = () => {
           parsedCommand?.action === 'remove' ? 'removed' : 'added'
         } successfully.`;
 
+      success('Inventory Updated', finalMsg);
+
       setCommand({
         action: parsedCommand?.action || 'add',
         product: res.data?.product_name || parsedCommand?.product || '',
@@ -166,7 +171,6 @@ export const VoiceModal: React.FC = () => {
     setVoiceState('transcribing');
     setManualText('');
 
-    // Smooth conversational progression
     setTimeout(() => {
       if (useVoiceStore.getState().voiceState === 'transcribing') {
         useVoiceStore.getState().setVoiceState('understanding');
@@ -176,7 +180,7 @@ export const VoiceModal: React.FC = () => {
       if (useVoiceStore.getState().voiceState === 'understanding') {
         useVoiceStore.getState().setVoiceState('checking_db');
       }
-    }, 600);
+    }, 650);
 
     try {
       const lang = i18n.language || 'en';
@@ -252,25 +256,33 @@ export const VoiceModal: React.FC = () => {
     <Modal
       isOpen={isOpen}
       onClose={handleCancel}
+      size="md"
       title={
-        voiceState === 'needs_confirmation'
-          ? actionLabel
-          : voiceState === 'error'
-            ? t('common.error', 'Notice')
-            : voiceState === 'completed'
-              ? isQuery
-                ? parsedCommand?.title || 'Voice Answer'
-                : 'Stock Updated'
-              : t('voice.processing', 'Processing Voice Command...')
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <Mic className="w-4 h-4" />
+          </div>
+          <span>
+            {voiceState === 'needs_confirmation'
+              ? actionLabel
+              : voiceState === 'error'
+                ? 'Voice Assistant Notice'
+                : voiceState === 'completed'
+                  ? isQuery
+                    ? parsedCommand?.title || 'Voice Answer'
+                    : 'Stock Updated Successfully'
+                  : 'Processing Voice Command...'}
+          </span>
+        </div>
       }
     >
       <div className="space-y-5">
         {/* Voice Input Transcript Header */}
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
             {t('voice.youSaid', 'Voice Input')}
           </p>
-          <p className="text-lg font-medium text-slate-900 italic">
+          <p className="text-base sm:text-lg font-bold text-slate-900 italic">
             &ldquo;{transcript || '...'}&rdquo;
           </p>
         </div>
@@ -282,7 +294,7 @@ export const VoiceModal: React.FC = () => {
           voiceState === 'checking_db' ||
           voiceState === 'committing') && (
           <div className="flex flex-col items-center justify-center py-6 px-4">
-            {/* Animated Pipeline Indicator */}
+            {/* Step-by-Step Pipeline Indicator */}
             <div className="flex items-center justify-between w-full max-w-sm mb-6 px-2">
               <div
                 className={`flex flex-col items-center ${
@@ -292,7 +304,7 @@ export const VoiceModal: React.FC = () => {
                 }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center mb-1 text-sm border-2 ${
+                  className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 text-sm border-2 ${
                     voiceState === 'transcribing' || voiceState === 'uploading'
                       ? 'border-indigo-600 bg-indigo-50 animate-pulse'
                       : 'border-slate-200 bg-white'
@@ -300,10 +312,10 @@ export const VoiceModal: React.FC = () => {
                 >
                   <Mic className="w-4 h-4" />
                 </div>
-                <span className="text-[11px]">Processing</span>
+                <span className="text-[11px] font-semibold">1. Listening</span>
               </div>
 
-              <div className="h-0.5 w-6 bg-slate-200 -mt-4" />
+              <div className="h-0.5 w-8 bg-slate-200 -mt-4" />
 
               <div
                 className={`flex flex-col items-center ${
@@ -313,7 +325,7 @@ export const VoiceModal: React.FC = () => {
                 }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center mb-1 text-sm border-2 ${
+                  className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 text-sm border-2 ${
                     voiceState === 'understanding'
                       ? 'border-indigo-600 bg-indigo-50 animate-pulse'
                       : 'border-slate-200 bg-white'
@@ -321,10 +333,10 @@ export const VoiceModal: React.FC = () => {
                 >
                   <Brain className="w-4 h-4" />
                 </div>
-                <span className="text-[11px]">Understanding</span>
+                <span className="text-[11px] font-semibold">2. Understanding</span>
               </div>
 
-              <div className="h-0.5 w-6 bg-slate-200 -mt-4" />
+              <div className="h-0.5 w-8 bg-slate-200 -mt-4" />
 
               <div
                 className={`flex flex-col items-center ${
@@ -334,7 +346,7 @@ export const VoiceModal: React.FC = () => {
                 }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center mb-1 text-sm border-2 ${
+                  className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 text-sm border-2 ${
                     voiceState === 'checking_db' || voiceState === 'committing'
                       ? 'border-indigo-600 bg-indigo-50 animate-pulse'
                       : 'border-slate-200 bg-white'
@@ -342,18 +354,18 @@ export const VoiceModal: React.FC = () => {
                 >
                   <Database className="w-4 h-4" />
                 </div>
-                <span className="text-[11px]">Database</span>
+                <span className="text-[11px] font-semibold">3. Database</span>
               </div>
             </div>
 
             <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3" />
-            <p className="text-indigo-600 font-semibold text-sm">
+            <p className="text-indigo-600 font-bold text-sm">
               {voiceState === 'committing'
-                ? 'Updating inventory database...'
+                ? 'Updating store database...'
                 : voiceState === 'checking_db'
-                  ? 'Searching inventory records...'
+                  ? 'Checking your inventory...'
                   : voiceState === 'understanding'
-                    ? 'Understanding query intent...'
+                    ? 'Understanding your request...'
                     : 'Analyzing speech input...'}
             </p>
           </div>
@@ -361,9 +373,9 @@ export const VoiceModal: React.FC = () => {
 
         {/* Confirmation State (For Stock In / Out mutations) */}
         {voiceState === 'needs_confirmation' && parsedCommand && (
-          <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm">
-            <h4 className="font-semibold text-gray-900 mb-4 text-center">
-              {t('voice.verifyAction', 'Please verify this action:')}
+          <div className="bg-white border-2 border-indigo-100 rounded-2xl p-6 shadow-sm">
+            <h4 className="font-bold text-slate-900 mb-4 text-center text-sm uppercase tracking-wider text-slate-500">
+              {t('voice.verifyAction', 'Please verify stock update:')}
             </h4>
 
             <div className="flex flex-col items-center mb-6">
@@ -375,6 +387,7 @@ export const VoiceModal: React.FC = () => {
                       ? 'info'
                       : 'secondary'
                 }
+                dot
               >
                 {actionLabel}
               </Badge>
@@ -391,13 +404,13 @@ export const VoiceModal: React.FC = () => {
                       onChange={(e) => setQty(e.target.value)}
                     />
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                         {t('inventory.unit', 'Unit')}
                       </label>
                       <select
                         value={unit}
                         onChange={(e) => setUnit(e.target.value)}
-                        className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm min-h-[44px] px-3 border bg-white"
+                        className="block w-full rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 min-h-[44px] px-3 border"
                       >
                         {UNITS.map((u) => (
                           <option key={u.value} value={u.value}>
@@ -409,10 +422,10 @@ export const VoiceModal: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <span className="text-4xl font-extrabold text-gray-900 block">
+                    <span className="text-4xl sm:text-5xl font-black text-slate-900 block tracking-tight">
                       {parsedCommand.quantity ?? '?'} {parsedCommand.unit ?? ''}
                     </span>
-                    <span className="text-2xl font-semibold text-indigo-600 block mt-1">
+                    <span className="text-xl sm:text-2xl font-bold text-indigo-600 block mt-1.5">
                       {parsedCommand.product}
                     </span>
                   </>
@@ -420,33 +433,33 @@ export const VoiceModal: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-center mb-4">
+            <div className="flex justify-center mb-5">
               <button
                 type="button"
                 onClick={() => setEditing((v) => !v)}
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-800 inline-flex items-center"
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1 cursor-pointer"
               >
-                <Pencil className="h-4 w-4 mr-1" />
-                {editing ? t('common.cancel', 'Cancel Edit') : t('voice.edit', 'Edit values')}
+                <Pencil className="h-3.5 w-3.5" />
+                {editing ? t('common.cancel', 'Cancel Edit') : t('voice.edit', 'Adjust quantity / unit')}
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="grid grid-cols-2 gap-3">
               <Button
                 variant="secondary"
                 onClick={handleCancel}
-                className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                className="w-full text-rose-600 border-rose-200 hover:bg-rose-50"
               >
-                <X className="h-5 w-5 mr-2" />
+                <X className="h-4 w-4 mr-1.5" />
                 {t('common.cancel', 'Cancel')}
               </Button>
               <Button
                 variant="primary"
                 onClick={handleConfirm}
-                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
               >
-                <Check className="h-5 w-5 mr-2" />
-                {t('common.confirm', 'Confirm & Speak')}
+                <Check className="h-4 w-4 mr-1.5" />
+                {t('common.confirm', 'Confirm & Save')}
               </Button>
             </div>
           </div>
@@ -459,26 +472,26 @@ export const VoiceModal: React.FC = () => {
             {(queryType === 'COUNT_PRODUCTS' ||
               queryType === 'COUNT_PRODUCTS_ADDED' ||
               queryType === 'COUNT_TRANSACTIONS') && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-6 shadow-sm text-center">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 mb-2 border border-indigo-100">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-6 shadow-xs text-center">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 mb-2 border border-indigo-100">
                   <Package className="w-3.5 h-3.5" />
-                  <span>{parsedCommand?.title || 'Inventory Count'}</span>
+                  <span>{parsedCommand?.title || 'Inventory Overview'}</span>
                 </div>
-                <div className="text-6xl font-black text-indigo-950 tracking-tight my-2">
+                <div className="text-6xl font-black text-slate-900 tracking-tight my-2">
                   {structuredData.count ?? parsedCommand?.quantity ?? 0}
                 </div>
-                <div className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
                   {structuredData.operation
                     ? `${structuredData.operation.replace('_', ' ')} Transactions`
                     : structuredData.entity
                       ? structuredData.entity.replace('_', ' ')
-                      : 'Items'}
+                      : 'Total Products'}
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
                   <span className="capitalize">
                     Period: {structuredData.time_range?.replace('_', ' ') || 'All Time'}
                   </span>
-                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                  <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Live Database
                   </span>
                 </div>
@@ -490,17 +503,17 @@ export const VoiceModal: React.FC = () => {
               queryType === 'LOW_STOCK_QUERY' ||
               queryType === 'LIST_OUT_OF_STOCK' ||
               queryType === 'LIST_PRODUCTS_ADDED') && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm text-left">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs text-left">
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     {queryType === 'LIST_OUT_OF_STOCK' ? (
-                      <AlertCircle className="w-5 h-5 text-red-500" />
+                      <AlertCircle className="w-5 h-5 text-rose-500" />
                     ) : queryType === 'LIST_PRODUCTS_ADDED' ? (
                       <Package className="w-5 h-5 text-indigo-500" />
                     ) : (
                       <AlertTriangle className="w-5 h-5 text-amber-500" />
                     )}
-                    <h4 className="font-bold text-gray-900 text-base">
+                    <h4 className="font-bold text-slate-900 text-sm sm:text-base">
                       {parsedCommand?.title || 'Product List'}
                     </h4>
                   </div>
@@ -523,16 +536,16 @@ export const VoiceModal: React.FC = () => {
                       return (
                         <div
                           key={idx}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100/80 transition-colors border border-slate-200/60"
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-200/60"
                         >
-                          <span className="font-semibold text-gray-900 text-sm">
+                          <span className="font-bold text-slate-900 text-sm">
                             {item.product_name || item.name}
                           </span>
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                              className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
                                 isOut
-                                  ? 'bg-red-100 text-red-800'
+                                  ? 'bg-rose-100 text-rose-800'
                                   : isLow
                                     ? 'bg-amber-100 text-amber-800'
                                     : 'bg-indigo-100 text-indigo-800'
@@ -558,20 +571,22 @@ export const VoiceModal: React.FC = () => {
 
             {/* 3. Today's Activity Breakdown Grid */}
             {queryType === 'GET_TODAY_ACTIVITY' && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs">
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <Activity className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-gray-900 text-base">{parsedCommand?.title || "Today's Activity"}</h4>
+                    <h4 className="font-bold text-slate-900 text-base">
+                      {parsedCommand?.title || "Today's Activity"}
+                    </h4>
                   </div>
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
                     {(structuredData.today_stock_in ?? 0) + (structuredData.today_stock_out ?? 0)} transactions
                   </span>
                 </div>
 
                 {parsedCommand?.display_text && (
                   <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl mb-3 text-left">
-                    <p className="text-sm font-semibold text-gray-900 leading-relaxed">
+                    <p className="text-sm font-semibold text-slate-900 leading-relaxed">
                       {parsedCommand.display_text}
                     </p>
                   </div>
@@ -583,7 +598,7 @@ export const VoiceModal: React.FC = () => {
                     <div className="text-2xl font-black text-emerald-800">
                       {structuredData.today_stock_in ?? 0}
                     </div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 mt-0.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 mt-0.5">
                       Stock In
                     </div>
                   </div>
@@ -592,7 +607,7 @@ export const VoiceModal: React.FC = () => {
                     <div className="text-2xl font-black text-blue-800">
                       {structuredData.today_stock_out ?? 0}
                     </div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mt-0.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600 mt-0.5">
                       Stock Out
                     </div>
                   </div>
@@ -601,7 +616,7 @@ export const VoiceModal: React.FC = () => {
                     <div className="text-2xl font-black text-purple-800">
                       {structuredData.products_added ?? 0}
                     </div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-600 mt-0.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-purple-600 mt-0.5">
                       Added
                     </div>
                   </div>
@@ -609,7 +624,7 @@ export const VoiceModal: React.FC = () => {
 
                 {Array.isArray(structuredData.items) && structuredData.items.length > 0 && (
                   <div className="mt-3 text-left space-y-2 border-t border-slate-100 pt-3">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
                       Product Breakdown
                     </span>
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -618,15 +633,15 @@ export const VoiceModal: React.FC = () => {
                           key={idx}
                           className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200/60 text-xs"
                         >
-                          <span className="font-semibold text-gray-900">{item.product_name}</span>
+                          <span className="font-bold text-slate-900">{item.product_name}</span>
                           <div className="flex gap-2">
                             {item.stock_in && item.stock_in !== '0' && (
-                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">
                                 +{item.stock_in}
                               </span>
                             )}
                             {item.stock_out && item.stock_out !== '0' && (
-                              <span className="text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded">
+                              <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">
                                 -{item.stock_out}
                               </span>
                             )}
@@ -641,13 +656,13 @@ export const VoiceModal: React.FC = () => {
 
             {/* 4. Recent Transactions Timeline */}
             {queryType === 'GET_RECENT_TRANSACTIONS' && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm text-left">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs text-left">
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-gray-900 text-base">Recent Transactions</h4>
+                    <h4 className="font-bold text-slate-900 text-base">Recent Transactions</h4>
                   </div>
-                  <span className="text-xs font-semibold text-slate-500">Latest records</span>
+                  <span className="text-xs font-bold text-slate-500">Latest records</span>
                 </div>
                 {!structuredData.transactions || structuredData.transactions.length === 0 ? (
                   <div className="py-4 text-center text-slate-400 text-sm">
@@ -664,14 +679,14 @@ export const VoiceModal: React.FC = () => {
                         >
                           <div className="flex items-center gap-2.5">
                             <span
-                              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${
                                 isIn ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
                               }`}
                             >
                               {isIn ? '↓' : '↑'}
                             </span>
                             <div>
-                              <span className="font-semibold text-gray-900 text-sm block">
+                              <span className="font-bold text-slate-900 text-sm block">
                                 {tx.product_name}
                               </span>
                               <span className="text-[11px] text-slate-400">
@@ -685,7 +700,7 @@ export const VoiceModal: React.FC = () => {
                             </div>
                           </div>
                           <span
-                            className={`text-xs font-extrabold px-2 py-1 rounded-lg ${
+                            className={`text-xs font-black px-2 py-1 rounded-lg ${
                               isIn ? 'text-emerald-700 bg-emerald-50' : 'text-blue-700 bg-blue-50'
                             }`}
                           >
@@ -703,11 +718,11 @@ export const VoiceModal: React.FC = () => {
             {/* 5. Product Stock Detail Card */}
             {(queryType === 'GET_PRODUCT_STOCK' ||
               (isQuery && !queryType && parsedCommand?.product)) && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-6 shadow-sm text-center">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-6 shadow-xs text-center">
                 <span
                   className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold mb-2 ${
                     structuredData.status === 'OUT_OF_STOCK'
-                      ? 'bg-red-50 text-red-700 border border-red-200'
+                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
                       : structuredData.status === 'LOW_STOCK'
                         ? 'bg-amber-50 text-amber-700 border border-amber-200'
                         : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -719,34 +734,36 @@ export const VoiceModal: React.FC = () => {
                       ? 'Low Stock'
                       : 'In Stock'}
                 </span>
-                <h3 className="text-xl font-extrabold text-gray-900">
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900">
                   {structuredData.product_name || parsedCommand?.product}
                 </h3>
-                <div className="text-5xl font-black text-indigo-950 tracking-tight my-2">
+                <div className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight my-2">
                   {structuredData.quantity ?? parsedCommand?.quantity ?? 0}
                   <span className="text-xl font-bold text-slate-500 ml-1.5">
                     {structuredData.unit || parsedCommand?.unit || ''}
                   </span>
                 </div>
-                {structuredData.threshold ? (
-                  <p className="text-xs text-slate-400 mt-1">
-                    Reorder Alert Threshold: {structuredData.threshold} {structuredData.unit}
-                  </p>
-                ) : null}
+                <div className="text-xs font-semibold text-slate-400 mt-1">
+                  {structuredData.threshold ? (
+                    <span>Reorder Threshold: {structuredData.threshold} {structuredData.unit}</span>
+                  ) : (
+                    <span>Current Available Stock</span>
+                  )}
+                </div>
               </div>
             )}
 
             {/* 6. Top Stock Ranking Card */}
             {queryType === 'GET_TOP_STOCK_PRODUCTS' && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm text-left">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs text-left">
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-gray-900 text-base">
+                    <h4 className="font-bold text-slate-900 text-base">
                       {parsedCommand?.title || 'Stock Ranking'}
                     </h4>
                   </div>
-                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full capitalize">
+                  <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full capitalize">
                     {structuredData.order || 'Highest'}
                   </span>
                 </div>
@@ -757,14 +774,14 @@ export const VoiceModal: React.FC = () => {
                       className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/60"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
+                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-black">
                           {idx + 1}
                         </span>
-                        <span className="font-semibold text-gray-900 text-sm">
+                        <span className="font-bold text-slate-900 text-sm">
                           {it.product_name}
                         </span>
                       </div>
-                      <span className="text-xs font-bold text-indigo-950 bg-indigo-50 px-2 py-1 rounded-lg">
+                      <span className="text-xs font-black text-slate-900 bg-indigo-50 px-2 py-1 rounded-lg">
                         {it.quantity} {it.unit}
                       </span>
                     </div>
@@ -791,28 +808,28 @@ export const VoiceModal: React.FC = () => {
               ].includes(queryType || '') &&
                 isQuery &&
                 parsedCommand?.display_text)) && (
-              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm text-left">
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs text-left">
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-gray-900 text-base">
+                    <h4 className="font-bold text-slate-900 text-base">
                       {parsedCommand?.title || 'Store Insights'}
                     </h4>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Live Database
                   </span>
                 </div>
                 {parsedCommand?.display_text && (
                   <div className="p-3.5 bg-slate-50 border border-slate-200/60 rounded-xl">
-                    <p className="text-base font-semibold text-gray-900 leading-relaxed">
+                    <p className="text-sm sm:text-base font-bold text-slate-900 leading-relaxed">
                       {parsedCommand.display_text}
                     </p>
                   </div>
                 )}
                 {Array.isArray(structuredData.items) && structuredData.items.length > 0 && (
                   <div className="mt-3">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
                       Available Categories / Items
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -821,7 +838,7 @@ export const VoiceModal: React.FC = () => {
                         return (
                           <span
                             key={idx}
-                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-100"
+                            className="px-2.5 py-1 text-xs font-bold bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100"
                           >
                             {name}
                           </span>
@@ -834,7 +851,7 @@ export const VoiceModal: React.FC = () => {
             )}
 
             {/* Voice Audio Visualizer & Spoken Sentence Box */}
-            <div className="bg-gradient-to-b from-indigo-50/80 to-white border-2 border-indigo-200 rounded-2xl p-5 text-center shadow-xs">
+            <div className="bg-gradient-to-b from-indigo-50/80 to-white border-2 border-indigo-200/80 rounded-2xl p-5 text-center shadow-xs">
               <VoiceVisualizer
                 isSpeaking={isSpeaking}
                 onReplay={() =>
@@ -847,11 +864,11 @@ export const VoiceModal: React.FC = () => {
               />
 
               <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-xs my-3 text-left">
-                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-500 mb-1 flex items-center gap-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-1 flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" />
                   Spoken Answer
                 </p>
-                <p className="text-lg font-bold text-indigo-950 leading-relaxed">
+                <p className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed">
                   {parsedCommand?.original_text || 'Action completed successfully.'}
                 </p>
               </div>
@@ -860,7 +877,7 @@ export const VoiceModal: React.FC = () => {
                 <Button
                   variant="primary"
                   onClick={handleCancel}
-                  className="py-2 px-8 text-base bg-indigo-600 hover:bg-indigo-700"
+                  className="py-2.5 px-8 text-sm font-bold bg-indigo-600 hover:bg-indigo-700"
                 >
                   {t('common.done', 'Done')}
                 </Button>
@@ -871,29 +888,32 @@ export const VoiceModal: React.FC = () => {
 
         {/* Error / Fallback State */}
         {voiceState === 'error' && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
+          <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-6 text-center">
             <AlertCircle className="h-12 w-12 text-amber-500 mx-auto mb-3" />
-            <p className="text-amber-900 font-medium text-base mb-4">
-              {error || t('voice.notUnderstood', 'Could not understand the command.')}
+            <h4 className="text-base font-bold text-amber-950 mb-1">
+              Could not understand request
+            </h4>
+            <p className="text-amber-800 text-sm mb-4">
+              {error || t('voice.notUnderstood', 'Please try speaking again or type your question below.')}
             </p>
 
             <form onSubmit={handleManualSubmit} className="mt-4 mb-4">
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder='Ask anything (e.g., "Products added today?" or "Rice stock?")'
+                  placeholder='Ask anything (e.g. "Products added today?" or "Rice stock?")'
                   value={manualText}
                   onChange={(e) => setManualText(e.target.value)}
-                  className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                  className="flex-1 rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-indigo-500 focus:outline-none bg-white"
                 />
-                <Button variant="primary" type="submit" className="px-3">
+                <Button variant="primary" type="submit" className="px-4">
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
             </form>
 
             <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <Button variant="secondary" onClick={handleCancel}>
+              <Button variant="secondary" onClick={handleCancel} className="text-slate-700">
                 {t('voice.tryAgain', 'Close')}
               </Button>
               <Link to="/manual" onClick={handleCancel}>

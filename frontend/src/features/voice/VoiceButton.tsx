@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mic } from 'lucide-react';
+import { Mic, Sparkles } from 'lucide-react';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { startRecording } from '../../lib/audio';
 import { api } from '../../lib/api';
 import type { BackendVoicePreview } from '../../types/voice';
 
-// Minimal Web Speech API typings (not in all TS lib versions)
+// Minimal Web Speech API typings
 interface SpeechRecognitionResultLike {
   transcript: string;
 }
@@ -51,12 +51,14 @@ export const VoiceButton: React.FC = () => {
   const recorderRef = useRef<{ stop: () => Promise<Blob> } | null>(null);
   const timersRef = useRef<number[]>([]);
 
-  // 'webspeech' (default, free) or 'azure' (server STT with your Azure keys).
-  // Set VITE_SPEECH_PROVIDER=azure in frontend/.env to use Azure.
   const azureMode = (import.meta.env.VITE_SPEECH_PROVIDER as string | undefined || 'webspeech').toLowerCase() === 'azure';
 
   const isRecording = voiceState === 'listening' || voiceState === 'recording';
-  const isProcessing = voiceState === 'transcribing' || voiceState === 'understanding' || voiceState === 'uploading';
+  const isProcessing =
+    voiceState === 'transcribing' ||
+    voiceState === 'understanding' ||
+    voiceState === 'uploading' ||
+    voiceState === 'checking_db';
 
   useEffect(() => {
     const timers = timersRef.current;
@@ -88,6 +90,19 @@ export const VoiceButton: React.FC = () => {
     }
     setTranscript(text);
     setVoiceState('transcribing');
+
+    // Smooth step-by-step pipeline progression
+    later(() => {
+      if (useVoiceStore.getState().voiceState === 'transcribing') {
+        useVoiceStore.getState().setVoiceState('understanding');
+      }
+    }, 250);
+    later(() => {
+      if (useVoiceStore.getState().voiceState === 'understanding') {
+        useVoiceStore.getState().setVoiceState('checking_db');
+      }
+    }, 650);
+
     try {
       const lang = i18n.language || 'en';
       const res = await api.post<BackendVoicePreview>('/voice/commands', {
@@ -127,7 +142,6 @@ export const VoiceButton: React.FC = () => {
       );
       setVoiceState('needs_confirmation');
     } else if (status === 'answered') {
-      // Query answered directly — show as completed with the structured message & data
       const answerText =
         data.message ||
         data.display_text ||
@@ -152,7 +166,6 @@ export const VoiceButton: React.FC = () => {
         data.interaction_id
       );
       setVoiceState('completed');
-      later(() => useVoiceStore.getState().reset(), 15000);
     } else if (status === 'clarification_needed' || status === 'error') {
       const candidates = (data.candidates || []).map((c) => c.name).join(', ');
       setError(
@@ -160,7 +173,7 @@ export const VoiceButton: React.FC = () => {
           ? candidates
             ? `${data.message} ${candidates}`
             : data.message
-          : 'I did not understand that. Try "Add 5 bags of rice".'
+          : 'I did not understand that. Try "How much rice is available?"'
       );
     } else {
       setError(data.message || 'Unexpected response from server.');
@@ -176,9 +189,8 @@ export const VoiceButton: React.FC = () => {
     const lang = LANG_MAP[i18n.language] || 'en-IN';
 
     if (!SR) {
-      // No Web Speech API (e.g., Firefox/desktop Safari): fall back to typed input
-      const typed = window.prompt('Type your command (e.g., "Add 5 bags of rice"):');
-      if (typed === null) return; // user cancelled
+      const typed = window.prompt('Type your voice command (e.g. "How much rice do I have?"):');
+      if (typed === null) return;
       setVoiceState('uploading');
       void sendTranscript(typed);
       return;
@@ -211,7 +223,6 @@ export const VoiceButton: React.FC = () => {
         }
       };
       rec.onend = () => {
-        // If we are still in listening state (user stopped without result), go idle
         const s = useVoiceStore.getState().voiceState;
         if (s === 'listening' || s === 'recording') {
           useVoiceStore.getState().setVoiceState('idle');
@@ -224,14 +235,12 @@ export const VoiceButton: React.FC = () => {
     }
   };
 
-  /** Azure path: record mic audio -> POST /voice/transcribe -> transcript flow. */
   const startListeningAzure = async () => {
     try {
       setVoiceState('listening');
       const handle = await startRecording();
       recorderRef.current = handle;
       setVoiceState('recording');
-      // Safety: auto-finish after 13s (recorder auto-stops at 12s)
       later(() => {
         if (useVoiceStore.getState().voiceState === 'recording') {
           void finishAzureRecording();
@@ -285,41 +294,61 @@ export const VoiceButton: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+    <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center">
+      {/* Floating State Tooltip */}
+      <div className="mb-2.5 whitespace-nowrap bg-slate-900/90 backdrop-blur-md text-white text-xs font-bold py-1.5 px-3.5 rounded-full shadow-lg border border-slate-700/60 pointer-events-none flex items-center gap-1.5 animate-in fade-in">
+        {isRecording ? (
+          <>
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            <span>Listening to you...</span>
+          </>
+        ) : isProcessing ? (
+          <>
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>Understanding request...</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{t('voice.tapToSpeak', 'Tap to Talk')}</span>
+          </>
+        )}
+      </div>
+
+      {/* Hero Animated Microphone Action Button */}
       <button
         onClick={handleClick}
-        aria-label={t('voice.tapToSpeak')}
+        aria-label={t('voice.tapToSpeak', 'Tap to Talk')}
         aria-pressed={isRecording}
-        className={`relative flex items-center justify-center w-20 h-20 rounded-full shadow-lg transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-indigo-300 ${
-          isRecording 
-            ? 'bg-red-500 animate-pulse' 
+        className={`relative flex items-center justify-center w-20 h-20 rounded-full shadow-2xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-indigo-300 cursor-pointer ${
+          isRecording
+            ? 'bg-rose-600 scale-105 shadow-rose-500/50'
             : isProcessing
-              ? 'bg-yellow-500'
-              : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'
+              ? 'bg-amber-500 shadow-amber-500/40'
+              : 'bg-gradient-to-tr from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 hover:scale-105 shadow-indigo-500/40'
         }`}
       >
         {isProcessing ? (
-          <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          <div className="flex space-x-1.5">
+            <div className="w-2.5 h-2.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="w-2.5 h-2.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="w-2.5 h-2.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         ) : (
-          <Mic className="h-10 w-10 text-white" />
+          <Mic className="h-9 w-9 text-white" />
         )}
-        
-        {/* Ripple effect when recording */}
+
+        {/* Multi-Ring Ripple Animation When Listening */}
         {isRecording && (
           <>
-            <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />
-            <span className="absolute inline-flex h-24 w-24 rounded-full bg-red-300 opacity-50 animate-ping" style={{ animationDelay: '200ms' }} />
+            <span className="absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-60 animate-ping pointer-events-none" />
+            <span
+              className="absolute inline-flex h-28 w-28 rounded-full bg-rose-400 opacity-40 animate-ping pointer-events-none"
+              style={{ animationDelay: '300ms' }}
+            />
           </>
         )}
       </button>
-      
-      <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-gray-900 text-white text-xs py-1 px-3 rounded-full opacity-90 shadow-sm pointer-events-none">
-        {isRecording ? t('voice.listening') : isProcessing ? t('voice.processing') : t('voice.tapToSpeak')}
-      </div>
     </div>
   );
 };

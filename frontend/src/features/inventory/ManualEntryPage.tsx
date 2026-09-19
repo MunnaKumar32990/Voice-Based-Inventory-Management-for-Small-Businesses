@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { ArrowLeft, Save } from 'lucide-react';
+import { useToast } from '../../components/ui/Toast';
+import { ArrowLeft, Save, ArrowDownRight, ArrowUpRight, Sliders } from 'lucide-react';
 import { UNITS } from '../../lib/constants';
 import { api } from '../../lib/api';
 
@@ -15,11 +16,11 @@ interface Product {
   base_unit: string;
 }
 
-/** Manual stock entry — the offline/voice-failure fallback (A9). */
 export const ManualEntryPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { success, error: toastError } = useToast();
 
   const [productId, setProductId] = useState('');
   const [operation, setOperation] = useState<'STOCK_IN' | 'STOCK_OUT' | 'ADJUSTMENT'>('STOCK_IN');
@@ -38,7 +39,7 @@ export const ManualEntryPage: React.FC = () => {
   const save = useMutation({
     mutationFn: async () => {
       const qty = Number(quantity);
-      if (!productId) throw new Error('Select a product');
+      if (!productId) throw new Error('Please select a product');
       if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0');
       return (
         await api.post('/inventory/transactions', {
@@ -56,28 +57,46 @@ export const ManualEntryPage: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: ['products'] });
       await queryClient.invalidateQueries({ queryKey: ['transactions'] });
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
+
+      const opLabel =
+        operation === 'STOCK_IN'
+          ? 'Stock In Added'
+          : operation === 'STOCK_OUT'
+            ? 'Stock Out Recorded'
+            : 'Stock Level Adjusted';
+
+      success(opLabel, `${quantity} ${unit} recorded for ${selected?.display_name || 'product'}.`);
       navigate('/transactions');
     },
     onError: (e: unknown) => {
       const msg =
         (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
         (e as Error)?.message ||
-        'Could not save. Please try again.';
+        'Could not save transaction. Please try again.';
       setFormError(typeof msg === 'string' ? msg : 'Could not save.');
+      toastError('Transaction Failed', typeof msg === 'string' ? msg : 'Please check quantity and stock.');
     },
   });
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <div className="flex items-center space-x-4">
+      {/* Header */}
+      <div className="flex items-center space-x-4 pb-2 border-b border-slate-200/80">
         <button
           onClick={() => navigate(-1)}
-          className="p-2 rounded-full hover:bg-gray-100 text-gray-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
           aria-label="Back"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">{t('voice.manualEntry', 'Manual Entry')}</h1>
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            {t('voice.manualEntry', 'Manual Stock Entry')}
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Record manual stock movements, purchases, or adjustments without voice.
+          </p>
+        </div>
       </div>
 
       <Card>
@@ -90,15 +109,21 @@ export const ManualEntryPage: React.FC = () => {
           }}
         >
           {formError && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700" role="alert">
+            <div
+              className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700 font-medium"
+              role="alert"
+            >
               {formError}
             </div>
           )}
 
+          {/* Product Select */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Select Product
+            </label>
             <select
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm min-h-[44px] px-3 border"
+              className="block w-full rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 min-h-[44px] px-3.5 font-medium cursor-pointer"
               value={productId}
               onChange={(e) => {
                 setProductId(e.target.value);
@@ -107,41 +132,79 @@ export const ManualEntryPage: React.FC = () => {
               }}
               required
             >
-              <option value="">Select a product…</option>
+              <option value="">Choose a product from inventory…</option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.display_name}
+                  {p.display_name} ({p.base_unit})
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
-              <select
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm min-h-[44px] px-3 border"
-                value={operation}
-                onChange={(e) => setOperation(e.target.value as typeof operation)}
+          {/* Operation Selector Tabs */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Action Type
+            </label>
+            <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => setOperation('STOCK_IN')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  operation === 'STOCK_IN'
+                    ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <option value="STOCK_IN">{t('inventory.addStock', 'Add Stock')}</option>
-                <option value="STOCK_OUT">{t('inventory.removeStock', 'Remove Stock')}</option>
-                <option value="ADJUSTMENT">Set exact level</option>
-              </select>
+                <ArrowDownRight className="w-4 h-4" />
+                Stock In
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOperation('STOCK_OUT')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  operation === 'STOCK_OUT'
+                    ? 'bg-white text-blue-700 shadow-xs border border-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                Stock Out
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOperation('ADJUSTMENT')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  operation === 'ADJUSTMENT'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                Set Exact
+              </button>
             </div>
+          </div>
+
+          {/* Quantity and Unit */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label={t('inventory.quantity', 'Quantity')}
               type="number"
-              min="0"
+              min="0.01"
               step="any"
               required
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('inventory.unit', 'Unit')}</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                {t('inventory.unit', 'Unit')}
+              </label>
               <select
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm min-h-[44px] px-3 border"
+                className="block w-full rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 min-h-[44px] px-3.5 font-medium cursor-pointer"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
               >
@@ -155,21 +218,21 @@ export const ManualEntryPage: React.FC = () => {
           </div>
 
           <Input
-            label={t('inventory.reason', 'Reason (Optional)')}
+            label={t('inventory.reason', 'Reason or Note (Optional)')}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="purchase / sale / damage…"
+            placeholder="e.g. New delivery, daily sales, damage..."
           />
-          {selected && (
-            <p className="text-xs text-gray-500">
-              Base unit: {selected.base_unit}. Packaging units without a configured conversion are tracked as-is.
-            </p>
-          )}
 
-          <div className="flex justify-end pt-2">
-            <Button type="submit" variant="primary" isLoading={save.isPending}>
+          <div className="flex justify-end pt-3 border-t border-slate-100">
+            <Button
+              type="submit"
+              variant="primary"
+              className="font-bold shadow-md shadow-indigo-200 px-6"
+              isLoading={save.isPending}
+            >
               <Save className="h-4 w-4 mr-2" />
-              {t('common.save', 'Save')}
+              Save Transaction
             </Button>
           </div>
         </form>

@@ -1,70 +1,145 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../stores/authStore';
-import { Save } from 'lucide-react';
+import { useToast } from '../../components/ui/Toast';
+import { Save, Store, Globe2, Mic } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const shopName = useAuthStore((s) => s.shopName);
+  const user = useAuthStore((s) => s.user);
+  const { success } = useToast();
+
   const [name, setName] = useState(shopName || '');
-  const [saved, setSaved] = useState(false);
+  const [ownerName, setOwnerName] = useState(user?.name || '');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    // Demo backend has no shop-profile endpoint; persist locally so the
-    // dashboard/navbar reflect the name immediately.
     const current = useAuthStore.getState();
     if (current.token) {
-      current.login(current.token, current.user || { id: 'demo', name: 'Demo User' }, current.shopId || 'demo', name.trim() || 'My Shop');
+      current.login(
+        current.token,
+        { id: current.user?.id || 'user', name: ownerName.trim() || 'Owner', email: current.user?.email },
+        current.shopId || 'shop',
+        name.trim() || 'My Shop'
+      );
     }
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+    success('Settings Saved', 'Shop profile and preferences updated successfully.');
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">{t('nav.settings')}</h1>
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="pb-2 border-b border-slate-200/80">
+        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          {t('nav.settings', 'Store Settings')}
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          Configure your store profile, default language, and voice recognition options.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card title="Shop Profile">
+        {/* Shop Profile Card */}
+        <Card
+          title={
+            <div className="flex items-center gap-2">
+              <Store className="w-5 h-5 text-indigo-600" />
+              <span>Shop Profile</span>
+            </div>
+          }
+        >
           <form className="space-y-4" onSubmit={handleSave}>
-            <Input label="Shop Name" value={name} onChange={(e) => setName(e.target.value)} required />
-            <Input label="Owner Name" defaultValue="Demo User" />
-            <Input label="Phone Number" defaultValue="+91 9876543210" />
-            {saved && <p className="text-sm text-green-700" role="status">{t('common.success')}</p>}
-            <Button type="submit" variant="primary" className="w-full sm:w-auto mt-4">
-              <Save className="h-4 w-4 mr-2" />
-              {t('common.save')}
-            </Button>
+            <Input
+              label="Shop Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="e.g. Kumar General Store"
+            />
+            <Input
+              label="Owner / Manager Name"
+              value={ownerName}
+              onChange={(e) => setOwnerName(e.target.value)}
+              placeholder="e.g. Ramesh Kumar"
+            />
+            <Input
+              label="Contact Email"
+              defaultValue={user?.email || 'owner@store.com'}
+              disabled
+              helperText="Managed by your login authentication."
+            />
+            <div className="pt-2">
+              <Button type="submit" variant="primary" className="w-full sm:w-auto font-bold">
+                <Save className="h-4 w-4 mr-2" />
+                {t('common.save', 'Save Changes')}
+              </Button>
+            </div>
           </form>
         </Card>
 
-        <Card title="Preferences">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Language
-              </label>
-              <select 
-                className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm min-h-[44px] border"
-                value={i18n.language}
-                onChange={(e) => i18n.changeLanguage(e.target.value)}
-              >
-                <option value="en">English</option>
-                <option value="hi">हिन्दी (Hindi)</option>
-                <option value="te">తెలుగు (Telugu)</option>
-              </select>
-              <p className="mt-2 text-xs text-gray-500">
-                {t('voice.exampleCommands')}
-              </p>
+        {/* Preferences Card */}
+        <div className="space-y-6">
+          <Card
+            title={
+              <div className="flex items-center gap-2">
+                <Globe2 className="w-5 h-5 text-indigo-600" />
+                <span>Language & Dialect</span>
+              </div>
+            }
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Default Spoken Language
+                </label>
+                <select
+                  className="block w-full rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 min-h-[44px] px-3.5 font-medium cursor-pointer"
+                  value={i18n.language}
+                  onChange={(e) => {
+                    i18n.changeLanguage(e.target.value);
+                    success('Language Changed', `Voice assistant set to ${e.target.value.toUpperCase()}.`);
+                  }}
+                >
+                  <option value="en">English (India / International)</option>
+                  <option value="hi">हिन्दी (Hindi / Hinglish)</option>
+                  <option value="te">తెలుగు (Telugu / Telugish)</option>
+                </select>
+                <p className="mt-2 text-xs text-slate-500">
+                  Voice assistant responds in this language and recognizes regional store phrasing.
+                </p>
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+
+          {/* Voice Command Cheat Sheet */}
+          <Card
+            title={
+              <div className="flex items-center gap-2">
+                <Mic className="w-5 h-5 text-indigo-600" />
+                <span>Voice Command Guide</span>
+              </div>
+            }
+          >
+            <div className="space-y-2.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60">
+                <div className="font-bold text-slate-900">&ldquo;Total kitna products hai?&rdquo;</div>
+                <div className="text-slate-500 text-[11px]">Queries total catalog count across categories.</div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60">
+                <div className="font-bold text-slate-900">&ldquo;How much rice is available?&rdquo;</div>
+                <div className="text-slate-500 text-[11px]">Reports exact stock balance and reorder status.</div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60">
+                <div className="font-bold text-slate-900">&ldquo;Add 10 kg sugar&rdquo;</div>
+                <div className="text-slate-500 text-[11px]">Performs instant stock-in with confirmation.</div>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );

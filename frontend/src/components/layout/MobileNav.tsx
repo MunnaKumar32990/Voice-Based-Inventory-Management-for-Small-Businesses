@@ -1,3 +1,4 @@
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LayoutDashboard, Package, ArrowLeftRight, Bell } from 'lucide-react';
@@ -6,45 +7,58 @@ export const MobileNav: React.FC = () => {
   const { t } = useTranslation();
 
   const navItems = [
-    { to: '/', icon: <LayoutDashboard className="h-6 w-6" />, label: t('nav.dashboard'), key: 'dashboard' },
-    { to: '/products', icon: <Package className="h-6 w-6" />, label: t('nav.products'), key: 'products' },
-    { to: '/transactions', icon: <ArrowLeftRight className="h-6 w-6" />, label: t('nav.transactions'), key: 'transactions' },
-    { to: '/alerts', icon: <Bell className="h-6 w-6" />, label: t('nav.alerts'), key: 'alerts' },
+    { to: '/', icon: LayoutDashboard, label: t('nav.dashboard', 'Dashboard'), key: 'dashboard' },
+    { to: '/products', icon: Package, label: t('nav.products', 'Inventory'), key: 'products' },
+    { to: '/transactions', icon: ArrowLeftRight, label: t('nav.transactions', 'Transactions'), key: 'transactions' },
+    { to: '/alerts', icon: Bell, label: t('nav.alerts', 'Alerts'), key: 'alerts' },
   ];
 
   return (
-    <div className="sm:hidden fixed bottom-0 w-full bg-white border-t border-gray-200 z-40 pb-[env(safe-area-inset-bottom)]">
-      <div className="flex justify-around items-center h-16">
-        {navItems.slice(0, 2).map((item) => (
-          <NavLink
-            key={item.key}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex flex-col items-center justify-center w-full h-full min-h-[64px] ${
-                isActive ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-900'
-              }`
-            }
-          >
-            {item.icon}
-            <span className="text-[10px] mt-1 font-medium">{item.label}</span>
-          </NavLink>
-        ))}
-        <div className="w-16" aria-hidden="true" />{/* Space for floating mic button */}
-        {navItems.slice(2).map((item) => (
-          <NavLink
-            key={item.key}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex flex-col items-center justify-center w-full h-full min-h-[64px] ${
-                isActive ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-900'
-              }`
-            }
-          >
-            {item.icon}
-            <span className="text-[10px] mt-1 font-medium">{item.label}</span>
-          </NavLink>
-        ))}
+    <nav
+      className="sm:hidden fixed bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200/80 z-40 pb-[env(safe-area-inset-bottom)]"
+      aria-label="Mobile Navigation"
+    >
+      <div className="flex justify-around items-center h-16 px-2">
+        {navItems.slice(0, 2).map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.key}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center w-full h-full min-h-[56px] transition-colors ${
+                  isActive ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+                }`
+              }
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-[10px] mt-1 font-semibold tracking-tight">{item.label}</span>
+            </NavLink>
+          );
+        })}
+
+        {/* Space for central floating mic button */}
+        <div className="w-18 shrink-0" aria-hidden="true" />
+
+        {navItems.slice(2).map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.key}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center w-full h-full min-h-[56px] transition-colors ${
+                  isActive ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+                }`
+              }
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-[10px] mt-1 font-semibold tracking-tight">{item.label}</span>
+            </NavLink>
+          );
+        })}
       </div>
-    </div>
+    </nav>
   );
 };
