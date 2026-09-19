@@ -256,7 +256,7 @@ export const VoiceModal: React.FC = () => {
     <Modal
       isOpen={isOpen}
       onClose={handleCancel}
-      size="md"
+      size="lg"
       title={
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -506,7 +506,7 @@ export const VoiceModal: React.FC = () => {
               queryType === 'LIST_PRODUCTS' ||
               queryType === 'LIST_ALL_PRODUCTS') && (
               <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs text-left">
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     {queryType === 'LIST_OUT_OF_STOCK' ? (
                       <AlertCircle className="w-5 h-5 text-rose-500" />
@@ -521,38 +521,59 @@ export const VoiceModal: React.FC = () => {
                       {parsedCommand?.title || 'Product List'}
                     </h4>
                   </div>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                    {structuredData.items?.length ?? 0}{' '}
-                    {structuredData.items?.length === 1 ? 'item' : 'items'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                      <CheckCircle2 className="w-3 h-3" /> Live
+                    </span>
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {structuredData.items?.length ?? 0}{' '}
+                      {structuredData.items?.length === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
                 </div>
 
+                {/* Summary Banner */}
+                {parsedCommand?.display_text && (
+                  <div className="p-3 bg-indigo-50/70 border border-indigo-100/80 rounded-xl mb-3">
+                    <p className="text-xs sm:text-sm font-semibold text-indigo-950 leading-relaxed">
+                      {parsedCommand.display_text}
+                    </p>
+                  </div>
+                )}
+
                 {!structuredData.items || structuredData.items.length === 0 ? (
-                  <div className="py-6 text-center text-slate-500 text-sm">
+                  <div className="py-8 text-center text-slate-500 text-sm">
                     <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                     {parsedCommand?.display_text || 'No items to display.'}
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-64 sm:max-h-72 overflow-y-auto pr-1.5 scrollbar-thin">
                     {structuredData.items.map((item: any, idx: number) => {
                       const isLow = queryType?.includes('LOW');
                       const isOut = queryType?.includes('OUT');
                       return (
                         <div
                           key={idx}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-200/60"
+                          className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 hover:bg-slate-100/80 transition-colors border border-slate-200/60 gap-3"
                         >
-                          <span className="font-bold text-slate-900 text-sm">
-                            {item.product_name || item.name}
-                          </span>
-                          <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-slate-900 text-sm block truncate">
+                              {item.product_name || item.name}
+                            </span>
+                            {item.category && item.category !== 'General' && (
+                              <span className="text-[11px] font-medium text-slate-400 block mt-0.5">
+                                {item.category}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
                             <span
-                              className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                              className={`text-xs font-bold px-3 py-1 rounded-lg ${
                                 isOut
-                                  ? 'bg-rose-100 text-rose-800'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                   : isLow
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-indigo-100 text-indigo-800'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-indigo-100/80 text-indigo-800 border border-indigo-200/60'
                               }`}
                             >
                               {item.quantity != null
@@ -560,7 +581,7 @@ export const VoiceModal: React.FC = () => {
                                 : item.category || 'Active'}
                             </span>
                             {item.threshold != null && (
-                              <span className="text-[11px] text-slate-400">
+                              <span className="text-[11px] text-slate-400 hidden sm:inline">
                                 Reorder: {item.threshold}
                               </span>
                             )}
@@ -801,13 +822,20 @@ export const VoiceModal: React.FC = () => {
                 'COUNT_PRODUCTS',
                 'COUNT_PRODUCTS_ADDED',
                 'COUNT_TRANSACTIONS',
+                'COUNT_STOCK_IN',
+                'COUNT_STOCK_OUT',
                 'LIST_LOW_STOCK',
                 'LOW_STOCK_QUERY',
                 'LIST_OUT_OF_STOCK',
+                'LIST_PRODUCTS',
+                'LIST_ALL_PRODUCTS',
                 'LIST_PRODUCTS_ADDED',
                 'GET_TODAY_ACTIVITY',
+                'GET_STOCK_MOVEMENT',
                 'GET_RECENT_TRANSACTIONS',
                 'GET_PRODUCT_STOCK',
+                'STOCK_QUERY',
+                'GET_CURRENT_STOCK',
                 'GET_TOP_STOCK_PRODUCTS',
               ].includes(queryType || '') &&
                 isQuery &&
