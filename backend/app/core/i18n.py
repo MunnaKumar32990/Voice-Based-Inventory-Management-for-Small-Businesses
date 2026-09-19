@@ -1,25 +1,25 @@
 RESPONSES = {
     "en": {
-        "stock_added": "Added {quantity} {unit} of {product}. New balance is {balance} {balance_unit}.",
-        "stock_removed": "Removed {quantity} {unit} of {product}. New balance is {balance} {balance_unit}.",
+        "stock_added": "{quantity} {unit} {product} added successfully. New balance is {balance} {balance_unit}.",
+        "stock_removed": "{quantity} {unit} {product} removed successfully. New balance is {balance} {balance_unit}.",
         "stock_query_response": "You have {balance} {unit} of {product} in stock.",
         "low_stock_response": "The following items are low in stock: {items}.",
-        "product_not_found": "Sorry, I could not find the product {product}.",
+        "product_not_found": "Sorry, I could not find {product}.",
         "insufficient_stock": "Not enough stock. You only have {balance} {unit} of {product}.",
         "confirmation_prompt": "Are you sure you want to {action} {quantity} {unit} of {product}?"
     },
     "hi": {
-        "stock_added": "{product} ka {quantity} {unit} jod diya gaya. Naya balance {balance} {balance_unit} hai.",
-        "stock_removed": "{product} ka {quantity} {unit} nikal liya gaya. Naya balance {balance} {balance_unit} hai.",
-        "stock_query_response": "Aapke paas {product} ka {balance} {unit} stock mein hai.",
-        "low_stock_response": "In items ka stock kam hai: {items}.",
-        "product_not_found": "Maaf karein, mujhe {product} nahi mila.",
-        "insufficient_stock": "Stock kam hai. Aapke paas sirf {balance} {unit} {product} hai.",
-        "confirmation_prompt": "Kya aap waqai {product} ka {quantity} {unit} {action} chahte hain?"
+        "stock_added": "{quantity} {unit} {product} सफलतापूर्वक जोड़ दिया गया। नया बैलेंस {balance} {balance_unit} है।",
+        "stock_removed": "{quantity} {unit} {product} सफलतापूर्वक निकाल दिया गया। नया बैलेंस {balance} {balance_unit} है।",
+        "stock_query_response": "आपके पास {product} का {balance} {unit} स्टॉक में है।",
+        "low_stock_response": "इन items का स्टॉक कम है: {items}।",
+        "product_not_found": "माफ़ करें, मुझे {product} नहीं मिला।",
+        "insufficient_stock": "स्टॉक कम है। आपके पास सिर्फ {balance} {unit} {product} है।",
+        "confirmation_prompt": "क्या आप {quantity} {unit} {product} {action} करना चाहते हैं?"
     },
     "te": {
-        "stock_added": "{product} {quantity} {unit} jodincha badindi. Kotta balance {balance} {balance_unit}.",
-        "stock_removed": "{product} {quantity} {unit} tisiveya badindi. Kotta balance {balance} {balance_unit}.",
+        "stock_added": "{quantity} {unit} {product} విజయవంతంగా జోడించబడింది. కొత్త బ్యాలెన్స్ {balance} {balance_unit}.",
+        "stock_removed": "{quantity} {unit} {product} విజయవంతంగా తీసివేయబడింది. కొత్త బ్యాలెన్స్ {balance} {balance_unit}.",
         "stock_query_response": "Mee daggara {product} {balance} {unit} stock undi.",
         "low_stock_response": "Ee items stock thakkuva ga unnai: {items}.",
         "product_not_found": "Kshaminchandi, {product} dorakaledu.",

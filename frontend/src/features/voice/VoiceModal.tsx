@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Check, X, AlertCircle, Pencil, Volume2, Send } from 'lucide-react';
+import { Check, X, AlertCircle, Pencil, Send } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { VoiceVisualizer } from '../../components/ui/VoiceVisualizer';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { Badge } from '../../components/ui/Badge';
 import { api } from '../../lib/api';
 import { UNITS } from '../../lib/constants';
+import { speakText, stopSpeech } from '../../lib/tts';
 import { useQueryClient } from '@tanstack/react-query';
 
 export const VoiceModal: React.FC = () => {
@@ -30,6 +32,7 @@ export const VoiceModal: React.FC = () => {
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
   const [manualText, setManualText] = useState('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     if (voiceState === 'needs_confirmation' && parsedCommand) {
@@ -39,11 +42,24 @@ export const VoiceModal: React.FC = () => {
     }
   }, [voiceState, parsedCommand]);
 
-  // Speak answer or confirmation when state reaches completed
+  const playVoiceOutput = (text: string) => {
+    speakText(
+      text,
+      i18n.language,
+      () => setIsSpeaking(true),
+      () => setIsSpeaking(false)
+    );
+  };
+
+  // Automatically trigger voice output audio playback with animation when completed
   useEffect(() => {
     if (voiceState === 'completed' && parsedCommand?.original_text) {
-      speakText(parsedCommand.original_text);
+      playVoiceOutput(parsedCommand.original_text);
     }
+    return () => {
+      stopSpeech();
+      setIsSpeaking(false);
+    };
   }, [voiceState, parsedCommand]);
 
   const isOpen = [
@@ -55,21 +71,6 @@ export const VoiceModal: React.FC = () => {
     'completed',
     'error',
   ].includes(voiceState);
-
-  const speakText = (text: string) => {
-    try {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        const lang = i18n.language || 'en';
-        utterance.lang = lang === 'hi' ? 'hi-IN' : lang === 'te' ? 'te-IN' : 'en-IN';
-        utterance.rate = 0.95;
-        window.speechSynthesis.speak(utterance);
-      }
-    } catch {
-      /* TTS is best-effort */
-    }
-  };
 
   const handleConfirm = async () => {
     if (!interactionId) {
@@ -98,13 +99,20 @@ export const VoiceModal: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
       await queryClient.invalidateQueries({ queryKey: ['balances'] });
 
+      // Prepare natural speech feedback (e.g. "5 kg Rice added successfully")
+      const finalMsg =
+        commitMsg ||
+        `${parsedCommand?.quantity ?? ''} ${parsedCommand?.unit ?? ''} ${parsedCommand?.product ?? ''} ${
+          parsedCommand?.action === 'remove' ? 'removed' : 'added'
+        } successfully.`;
+
       setCommand({
         action: parsedCommand?.action || 'add',
         product: res.data?.product_name || parsedCommand?.product || '',
         quantity: parsedCommand?.quantity,
         unit: parsedCommand?.unit,
         confidence: 1,
-        original_text: commitMsg || t('messages.stockAdded', 'Inventory updated successfully.'),
+        original_text: finalMsg,
       });
 
       setVoiceState('completed');
@@ -117,6 +125,8 @@ export const VoiceModal: React.FC = () => {
   };
 
   const handleCancel = async () => {
+    stopSpeech();
+    setIsSpeaking(false);
     if (voiceState === 'needs_confirmation' && interactionId) {
       try {
         await api.post(`/voice/commands/${interactionId}/cancel`);
@@ -202,17 +212,22 @@ export const VoiceModal: React.FC = () => {
       isOpen={isOpen}
       onClose={handleCancel}
       title={
-        voiceState === 'needs_confirmation' ? actionLabel :
-        voiceState === 'error' ? t('common.error', 'Notice') :
-        voiceState === 'completed' ? (isQuery ? 'Stock Query Answer' : t('common.success', 'Success')) :
-        t('voice.processing', 'Processing Voice Command...')
+        voiceState === 'needs_confirmation'
+          ? actionLabel
+          : voiceState === 'error'
+            ? t('common.error', 'Notice')
+            : voiceState === 'completed'
+              ? isQuery
+                ? 'Voice Output & Answer'
+                : 'Stock Updated'
+              : t('voice.processing', 'Processing Voice Command...')
       }
     >
       <div className="space-y-5">
-        {/* Transcript Area */}
+        {/* Transcript Header Area */}
         <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-            {t('voice.youSaid', 'You Said')}
+            {t('voice.youSaid', 'Voice Input')}
           </p>
           <p className="text-lg font-medium text-slate-900 italic">
             &ldquo;{transcript || '...'}&rdquo;
@@ -321,39 +336,47 @@ export const VoiceModal: React.FC = () => {
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
               >
                 <Check className="h-5 w-5 mr-2" />
-                {t('common.confirm', 'Confirm')}
+                {t('common.confirm', 'Confirm & Speak')}
               </Button>
             </div>
           </div>
         )}
 
-        {/* Answer / Completed State */}
+        {/* Voice Output & Animation State */}
         {voiceState === 'completed' && (
-          <div className="bg-indigo-50/80 border-2 border-indigo-200 rounded-2xl p-6 text-center shadow-xs">
-            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Check className="h-8 w-8 text-indigo-600" />
-            </div>
-
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
-              {isQuery ? 'Stock Answer' : t('common.success', 'Success!')}
+          <div className="bg-gradient-to-b from-indigo-50/80 to-white border-2 border-indigo-200 rounded-2xl p-6 text-center shadow-xs">
+            <h3 className="text-xl font-bold text-gray-900 mb-1">
+              {isQuery ? 'Voice Answer' : 'Inventory Updated'}
             </h3>
 
+            {/* Sound Wave Frequency Visualizer & Glow Orb */}
+            <VoiceVisualizer
+              isSpeaking={isSpeaking}
+              onReplay={() =>
+                parsedCommand?.original_text && playVoiceOutput(parsedCommand.original_text)
+              }
+              onStop={() => {
+                stopSpeech();
+                setIsSpeaking(false);
+              }}
+            />
+
+            {/* Voice Output Text Card */}
             <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-xs my-3 text-left">
-              <p className="text-lg font-semibold text-indigo-950 leading-relaxed">
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-500 mb-1">
+                Voice Output
+              </p>
+              <p className="text-lg font-bold text-indigo-950 leading-relaxed">
                 {parsedCommand?.original_text || 'Action completed successfully.'}
               </p>
             </div>
 
             <div className="flex items-center justify-center gap-3 mt-4">
               <Button
-                variant="secondary"
-                onClick={() => parsedCommand?.original_text && speakText(parsedCommand.original_text)}
-                className="inline-flex items-center text-sm py-2 px-3 text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200"
+                variant="primary"
+                onClick={handleCancel}
+                className="py-2 px-8 text-base bg-indigo-600 hover:bg-indigo-700"
               >
-                <Volume2 className="h-4 w-4 mr-1.5" />
-                Speak Again
-              </Button>
-              <Button variant="primary" onClick={handleCancel} className="py-2 px-5">
                 {t('common.done', 'Done')}
               </Button>
             </div>
