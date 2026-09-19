@@ -1,0 +1,79 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "products": "Products",
+    "transactions": "Transactions",
+    "alerts": "Alerts",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalProducts": "Total Products",
+    "todayIn": "Today Stock In",
+    "todayOut": "Today Stock Out",
+    "lowStock": "Low Stock Items",
+    "recentTransactions": "Recent Transactions",
+    "noProducts": "No products found"
+  },
+  "voice": {
+    "tapToSpeak": "Tap to speak",
+    "listening": "Listening...",
+    "processing": "Processing...",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "tryAgain": "Try Again",
+    "manualEntry": "Manual Entry",
+    "youSaid": "You said:",
+    "saving": "Saving changes...",
+    "verifyAction": "Please verify this action:",
+    "ofProduct": "of",
+    "lowConfidence": "Low confidence — please double-check.",
+    "notUnderstood": "Could not understand the command.",
+    "exampleCommands": "Example: 'Add 5 kg rice' or 'Remove 2 boxes of soap'"
+  },
+  "products": {
+    "title": "Products",
+    "addProduct": "Add Product",
+    "editProduct": "Edit Product",
+    "name": "Name",
+    "category": "Category",
+    "unit": "Base Unit",
+    "threshold": "Reorder Threshold",
+    "aliases": "Voice Aliases",
+    "save": "Save",
+    "delete": "Delete"
+  },
+  "inventory": {
+    "addStock": "Add Stock",
+    "removeStock": "Remove Stock",
+    "quantity": "Quantity",
+    "unit": "Unit",
+    "reason": "Reason (Optional)",
+    "price": "Price (Optional)"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "lowStock": "Low Stock Alert",
+    "reorderNeeded": "Reorder needed",
+    "resolve": "Resolve"
+  },
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "search": "Search...",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success",
+    "noData": "No data available"
+  },
+  "messages": {
+    "stockAdded": "Stock added successfully",
+    "stockRemoved": "Stock removed successfully",
+    "productCreated": "Product created successfully",
+    "insufficientStock": "Insufficient stock available",
+    "productNotFound": "Product not found"
+  }
+}

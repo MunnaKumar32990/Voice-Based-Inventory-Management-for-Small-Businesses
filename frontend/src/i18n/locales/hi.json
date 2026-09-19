@@ -1,0 +1,79 @@
+{
+  "nav": {
+    "dashboard": "डैशबोर्ड",
+    "products": "उत्पाद",
+    "transactions": "लेन-देन",
+    "alerts": "अलर्ट",
+    "settings": "सेटिंग्स"
+  },
+  "dashboard": {
+    "title": "डैशबोर्ड",
+    "totalProducts": "कुल उत्पाद",
+    "todayIn": "आज का स्टॉक इन",
+    "todayOut": "आज का स्टॉक आउट",
+    "lowStock": "कम स्टॉक वाले आइटम",
+    "recentTransactions": "हाल के लेन-देन",
+    "noProducts": "कोई उत्पाद नहीं मिला"
+  },
+  "voice": {
+    "tapToSpeak": "बोलने के लिए टैप करें",
+    "listening": "सुन रहा हूँ...",
+    "processing": "प्रसंस्करण...",
+    "confirm": "पुष्टि करें",
+    "cancel": "रद्द करें",
+    "edit": "संपादित करें",
+    "tryAgain": "पुनः प्रयास करें",
+    "manualEntry": "मैनुअल प्रविष्टि",
+    "youSaid": "आपने कहा:",
+    "saving": "परिवर्तन सहेजे जा रहे हैं...",
+    "verifyAction": "कृपया इस कार्रवाई की पुष्टि करें:",
+    "ofProduct": "का",
+    "lowConfidence": "कम आत्मविश्वास — कृपया दोबारा जांचें।",
+    "notUnderstood": "कमांड समझ नहीं आया।",
+    "exampleCommands": "उदाहरण: '5 किलो चावल जोड़ें' या '2 बॉक्स साबुन निकालें'"
+  },
+  "products": {
+    "title": "उत्पाद",
+    "addProduct": "उत्पाद जोड़ें",
+    "editProduct": "उत्पाद संपादित करें",
+    "name": "नाम",
+    "category": "श्रेणी",
+    "unit": "मूल इकाई",
+    "threshold": "पुन: आदेश सीमा",
+    "aliases": "वॉयस उपनाम",
+    "save": "सहेजें",
+    "delete": "हटाएं"
+  },
+  "inventory": {
+    "addStock": "स्टॉक जोड़ें",
+    "removeStock": "स्टॉक निकालें",
+    "quantity": "मात्रा",
+    "unit": "इकाई",
+    "reason": "कारण (वैकल्पिक)",
+    "price": "कीमत (वैकल्पिक)"
+  },
+  "alerts": {
+    "title": "अलर्ट",
+    "lowStock": "कम स्टॉक अलर्ट",
+    "reorderNeeded": "पुनः आदेश की आवश्यकता है",
+    "resolve": "समाधान करें"
+  },
+  "common": {
+    "confirm": "पुष्टि करें",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "delete": "हटाएं",
+    "search": "खोजें...",
+    "loading": "लोड हो रहा है...",
+    "error": "एक त्रुटि हुई",
+    "success": "सफलता",
+    "noData": "कोई डेटा उपलब्ध नहीं"
+  },
+  "messages": {
+    "stockAdded": "स्टॉक सफलतापूर्वक जोड़ा गया",
+    "stockRemoved": "स्टॉक सफलतापूर्वक निकाला गया",
+    "productCreated": "उत्पाद सफलतापूर्वक बनाया गया",
+    "insufficientStock": "अपर्याप्त स्टॉक उपलब्ध",
+    "productNotFound": "उत्पाद नहीं मिला"
+  }
+}
