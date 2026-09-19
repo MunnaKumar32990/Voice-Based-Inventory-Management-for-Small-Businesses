@@ -22,21 +22,22 @@ INTENT_KEYWORDS = {
         # English
         "add", "added", "stock in", "purchase", "received", "came", "arrived",
         # Hindi romanized
-        "aaya", "aagaya", "aaye", "laya", "kharid", "dal", "daal", "jod", "add karo",
+        "aaya", "aagaya", "aaye", "laya", "kharid", "kharida", "dal", "daal", "dalo", "daalo",
+        "jod", "jodo", "add karo", "add kro", "kro", "karo", "kardo", "dal do",
         # Hindi Devanagari
-        "आया", "आगया", "आये", "लाया", "खरीद", "डाल", "जोड़",
+        "आया", "आगया", "आये", "लाया", "खरीद", "खरीदा", "डाल", "डालो", "जोड़", "जोड़ो",
         # Telugu
-        "వచ్చింది", "చేర్చు", "కలుపు",
+        "వచ్చింది", "చేర్చు", "కలుపు", "చేయ్", "add cheyyi", "cheyyi",
     ],
     "STOCK_OUT": [
         # English
         "remove", "removed", "sold", "sale", "dispatch", "dispatched", "took", "gave",
         # Hindi romanized
-        "becha", "bech", "bikha", "gaya", "nikal", "nikala", "hatao", "remove karo",
+        "becha", "bech", "bikha", "gaya", "nikal", "nikala", "nikalo", "hatao", "remove karo", "remove kro", "de diya", "diya",
         # Hindi Devanagari
-        "बेचा", "बेच", "गया", "निकाल", "निकाला", "हटाओ",
+        "बेचा", "बेच", "गया", "निकाल", "निकाला", "निकालो", "हटाओ", "दे दिया",
         # Telugu
-        "అమ్మాను", "తీసేయి", "తీసు", "అమ్మినది",
+        "అమ్మాను", "తీసేయి", "తీసు", "అమ్మినది", "తీసెయ్యి", "remove cheyyi",
     ],
     "STOCK_QUERY": [
         # English
@@ -240,7 +241,21 @@ class NLPService:
         for kw in sorted(keywords, key=len, reverse=True):
             pattern = r'(?:^|\s)' + re.escape(kw) + r'(?:\s|$)'
             text = re.sub(pattern, ' ', text)
-        return text.strip()
+
+        # Also strip common auxiliary verbs & particles from product candidate
+        aux_tokens = [
+            "add kro", "remove kro", "kro", "karo", "kardo", "kar do", "kar", "do",
+            "diya", "de diya", "gaya", "gaye", "gayi", "hai", "hain", "tha", "thi",
+            "ka", "ki", "ke", "ko", "se", "me", "mein", "bhi", "aur", "pe", "par",
+            "करो", "कर दो", "कर", "दो", "दिया", "गया", "गए", "गई", "है", "हैं", "का", "की", "के",
+            "cheyyi", "chey", "chesi", "undi", "unnai", "mariyu",
+            "please", "pls", "the", "of", "in", "from", "and"
+        ]
+        for aux in sorted(aux_tokens, key=len, reverse=True):
+            pattern = r'(?:^|\s)' + re.escape(aux) + r'(?:\s|$)'
+            text = re.sub(pattern, ' ', text)
+
+        return re.sub(r'\s+', ' ', text).strip()
 
     def _calculate_confidence(self, intent: str, product_text: Optional[str],
                               quantity: Optional[Decimal], unit: Optional[str]) -> float:

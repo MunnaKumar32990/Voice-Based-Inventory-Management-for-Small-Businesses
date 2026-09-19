@@ -55,3 +55,29 @@ async def test_azure_needs_keys(monkeypatch):
     s = SpeechService()
     with pytest.raises(UnsupportedProviderError, match="not configured"):
         await s.transcribe(b"fake-audio", "en-IN", provider="azure")
+
+
+def test_dialect_detection_and_responses():
+    from app.core.i18n import detect_speech_dialect, get_response
+
+    # Hinglish colloquial input
+    d_hi = detect_speech_dialect("5 kg rice add kro")
+    assert d_hi == "hinglish"
+    resp_hi = get_response("stock_added", d_hi, product="Rice", quantity="5", balance="105", unit="kg")
+    assert "add ho gya" in resp_hi
+    assert "new quantity 105 kg hai" in resp_hi
+
+    # English input
+    d_en = detect_speech_dialect("Add 5 kg of rice")
+    assert d_en == "en"
+    resp_en = get_response("stock_added", d_en, product="Rice", quantity="5", balance="105", unit="kg")
+    assert "added successfully" in resp_en
+
+    # Devanagari Hindi
+    d_deva = detect_speech_dialect("चावल 5 बोरी आया")
+    assert d_deva == "hi_deva"
+
+    # Telugish
+    d_te = detect_speech_dialect("5 kg rice add cheyyi")
+    assert d_te == "telugish"
+

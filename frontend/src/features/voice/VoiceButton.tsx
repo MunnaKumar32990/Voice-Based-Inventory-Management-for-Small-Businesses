@@ -121,6 +121,7 @@ export const VoiceButton: React.FC = () => {
           price: c.price_total ?? undefined,
           confidence: c.confidence ?? 0.8,
           original_text: data.transcript || fallbackTranscript,
+          detected_language: data.detected_language,
         },
         data.interaction_id
       );
@@ -141,6 +142,7 @@ export const VoiceButton: React.FC = () => {
           unit: data.unit,
           confidence: 1,
           original_text: answerText,
+          detected_language: data.detected_language,
         },
         data.interaction_id
       );

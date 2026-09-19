@@ -20,6 +20,7 @@ export interface ParsedCommand {
   price?: number;
   confidence: number;
   original_text: string;
+  detected_language?: string;
 }
 
 export interface VoiceCommand {
@@ -35,6 +36,7 @@ export interface BackendVoicePreview {
   status: string;
   interaction_id?: string;
   transcript?: string;
+  detected_language?: string;
   intent?: string;
   message?: string;
   confirmation_text?: string;

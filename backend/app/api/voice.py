@@ -8,7 +8,7 @@ from app.services.speech_service import SpeechService, UnsupportedProviderError
 from app.services.tts_service import TTSService
 from app.dependencies import get_current_user, get_database
 from app.config import settings
-from app.core.i18n import get_response
+from app.core.i18n import get_response, detect_speech_dialect
 from app.websocket.manager import manager as ws_manager
 from pydantic import BaseModel, Field
 from decimal import Decimal
@@ -24,6 +24,14 @@ matcher = ProductMatcher()
 inv = InventoryService()
 speech = SpeechService()
 tts = TTSService()
+
+
+def _format_qty(val) -> str:
+    try:
+        f = float(val)
+        return str(int(f)) if f.is_integer() else str(f)
+    except Exception:
+        return str(val)
 
 
 def _safe_oid(value):
@@ -102,8 +110,11 @@ async def handle_voice_command(
     shop_id = user["shop_id"]
     user_id = user["sub"]
 
+    # Detect speech dialect (e.g. hinglish, telugish, hi_deva, te_script, en)
+    detected_lang = detect_speech_dialect(req.transcript, req.language)
+
     # 1. Parse the transcript
-    parsed = nlp.parse_command(req.transcript, req.language)
+    parsed = nlp.parse_command(req.transcript, detected_lang)
 
     # 2. Handle query intents directly (no confirmation needed)
     if parsed.intent == "LOW_STOCK_QUERY":
@@ -114,20 +125,22 @@ async def handle_voice_command(
             "status": "answered",
             "intent": "LOW_STOCK_QUERY",
             "transcript": req.transcript,
+            "detected_language": detected_lang,
             "answer": items if items else "All items are well stocked!",
-            "message": get_response("low_stock_response", req.language,
+            "message": get_response("low_stock_response", detected_lang,
                                      items=names if names else "none") if items
-                       else "All items are well stocked!",
+                       else ("Sabhi items stock me hain!" if detected_lang in ("hinglish", "hi", "hi_deva") else "All items are well stocked!"),
         }
 
     if parsed.intent == "STOCK_QUERY":
         if not parsed.product_text:
-            return {"status": "error", "message": "Which product do you want to check?"}
+            return {"status": "error", "message": "Which product do you want to check?", "detected_language": detected_lang}
         match_res = await matcher.match_product(db, shop_id, parsed.product_text)
         if not match_res.product:
             return {
                 "status": "error",
-                "message": get_response("product_not_found", req.language, product=parsed.product_text),
+                "detected_language": detected_lang,
+                "message": get_response("product_not_found", detected_lang, product=parsed.product_text),
             }
         balance = await db.stock_balances.find_one({
             "shop_id": shop_id,
@@ -140,25 +153,36 @@ async def handle_voice_command(
             "status": "answered",
             "intent": "STOCK_QUERY",
             "transcript": req.transcript,
+            "detected_language": detected_lang,
             "product_name": product_name,
             "quantity": qty,
             "unit": unit,
-            "message": get_response("stock_query_response", req.language,
-                                     product=product_name, quantity=str(qty), unit=unit),
+            "message": get_response("stock_query_response", detected_lang,
+                                     product=product_name, quantity=_format_qty(qty),
+                                     balance=_format_qty(qty), unit=unit),
         }
 
     if parsed.intent == "CANCEL":
-        return {"status": "cancelled", "message": "Action cancelled."}
+        cancel_msg = "Action cancelled."
+        if detected_lang in ("hinglish", "hi", "hi_deva"):
+            cancel_msg = "Cancel kar diya gaya."
+        elif detected_lang in ("telugish", "te", "te_script"):
+            cancel_msg = "Raddhu cheyabadindi."
+        return {"status": "cancelled", "message": cancel_msg, "detected_language": detected_lang}
 
     if parsed.intent == "UNKNOWN":
+        unk_msg = "I didn't understand that. Try saying 'Add 5 bags of rice' or 'How much sugar is available?'"
+        if detected_lang in ("hinglish", "hi", "hi_deva"):
+            unk_msg = "Samajh nahi aaya. Kripya '5 kg rice add kro' ya 'chawal kitna hai' boliye."
         return {
             "status": "error",
-            "message": "I didn't understand that. Try saying 'Add 5 bags of rice' or 'How much sugar is available?'",
+            "detected_language": detected_lang,
+            "message": unk_msg,
         }
 
     # 3. For stock mutations (STOCK_IN / STOCK_OUT), find product and prepare preview
     if not parsed.product_text:
-        return {"status": "error", "message": "I couldn't identify the product. Please try again."}
+        return {"status": "error", "message": "I couldn't identify the product. Please try again.", "detected_language": detected_lang}
 
     match_res = await matcher.match_product(db, shop_id, parsed.product_text)
 
@@ -167,6 +191,7 @@ async def handle_voice_command(
     if match_res.candidates and len(match_res.candidates) > 1 and not match_res.product:
         return {
             "status": "clarification_needed",
+            "detected_language": detected_lang,
             "message": "Multiple products matched. Please choose one:",
             "candidates": [
                 {"id": str(c["_id"]), "name": c.get("display_name", c.get("name", ""))}
@@ -177,7 +202,8 @@ async def handle_voice_command(
     if not match_res.product:
         return {
             "status": "error",
-            "message": get_response("product_not_found", req.language, product=parsed.product_text),
+            "detected_language": detected_lang,
+            "message": get_response("product_not_found", detected_lang, product=parsed.product_text),
             "candidates": [
                 {"id": str(c["_id"]), "name": c.get("display_name", c.get("name", ""))}
                 for c in (match_res.candidates or [])
@@ -189,9 +215,13 @@ async def handle_voice_command(
     product_name = product.get("display_name", product.get("name", ""))
 
     if parsed.quantity is None:
+        clarify_msg = f"How many {product_name}? Please specify the quantity."
+        if detected_lang in ("hinglish", "hi", "hi_deva"):
+            clarify_msg = f"{product_name} kitna? Kripya quantity batayein."
         return {
             "status": "clarification_needed",
-            "message": f"How many {product_name}? Please specify the quantity.",
+            "detected_language": detected_lang,
+            "message": clarify_msg,
         }
 
     # 4. Prepare the transaction preview
@@ -201,7 +231,7 @@ async def handle_voice_command(
             db, shop_id, product_id, parsed.intent, parsed.quantity, unit
         )
     except ValueError as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": str(e), "detected_language": detected_lang}
 
     # 5. Store the voice interaction for later commit
     interaction_id = str(uuid.uuid4())
@@ -211,7 +241,7 @@ async def handle_voice_command(
         "user_id": user_id,
         "status": "NEEDS_CONFIRMATION",
         "transcript": req.transcript,
-        "language": req.language,
+        "language": detected_lang,
         "parsed_command": {
             "intent": parsed.intent,
             "product_text": parsed.product_text,
@@ -228,16 +258,19 @@ async def handle_voice_command(
 
     # 6. Build confirmation text
     action_label = "Add stock" if parsed.intent == "STOCK_IN" else "Remove stock"
+    if detected_lang in ("hinglish", "hi", "hi_deva"):
+        action_label = "add" if parsed.intent == "STOCK_IN" else "remove"
     confirmation_text = get_response(
-        "confirmation_prompt", req.language,
+        "confirmation_prompt", detected_lang,
         action=action_label, product=product_name,
-        quantity=str(float(parsed.quantity)), unit=unit,
+        quantity=_format_qty(parsed.quantity), unit=unit,
     )
 
     return {
         "status": "needs_confirmation",
         "interaction_id": interaction_id,
         "transcript": req.transcript,
+        "detected_language": detected_lang,
         "command": {
             "intent": parsed.intent,
             "product_text": parsed.product_text,
@@ -288,12 +321,14 @@ async def commit_voice_command(
     if interaction["status"] == "COMMITTED":
         cmd = interaction["parsed_command"]
         txn = await db.transactions.find_one({"shop_id": shop_id, "idempotency_key": f"voice_{interaction_id}"})
+        language = interaction.get("language") or detect_speech_dialect(interaction.get("transcript", ""), "en")
         return {
             "status": "committed",
             "transaction_id": str(txn["_id"]) if txn else "",
             "product_name": cmd.get("product_text", ""),
             "new_balance": txn.get("new_balance") if txn else None,
             "balance_unit": txn.get("base_unit") if txn else cmd.get("unit", ""),
+            "detected_language": language,
             "message": "Already processed.",
         }
 
@@ -369,7 +404,7 @@ async def commit_voice_command(
     product_name = product.get("display_name", product.get("name", "")) if product else cmd.get("product_text", "")
 
     action_key = "stock_added" if cmd["intent"] == "STOCK_IN" else "stock_removed"
-    language = interaction.get("language", "en")
+    language = interaction.get("language") or detect_speech_dialect(interaction.get("transcript", ""), "en")
 
     return {
         "status": "committed",
@@ -377,10 +412,11 @@ async def commit_voice_command(
         "product_name": product_name,
         "new_balance": result.get("new_balance", 0),
         "balance_unit": result.get("balance_unit", cmd["unit"]),
+        "detected_language": language,
         "message": get_response(action_key, language,
                                  product=product_name,
-                                 quantity=str(cmd["quantity"]),
-                                 balance=str(result.get("new_balance", 0)),
+                                 quantity=_format_qty(cmd["quantity"]),
+                                 balance=_format_qty(result.get("new_balance", 0)),
                                  unit=cmd["unit"],
                                  balance_unit=result.get("balance_unit", cmd["unit"])),
     }

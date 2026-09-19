@@ -42,10 +42,11 @@ export const VoiceModal: React.FC = () => {
     }
   }, [voiceState, parsedCommand]);
 
-  const playVoiceOutput = (text: string) => {
+  const playVoiceOutput = (text: string, langOverride?: string) => {
+    const lang = langOverride || parsedCommand?.detected_language || i18n.language || 'en';
     speakText(
       text,
-      i18n.language,
+      lang,
       () => setIsSpeaking(true),
       () => setIsSpeaking(false)
     );
@@ -54,7 +55,7 @@ export const VoiceModal: React.FC = () => {
   // Automatically trigger voice output audio playback with animation when completed
   useEffect(() => {
     if (voiceState === 'completed' && parsedCommand?.original_text) {
-      playVoiceOutput(parsedCommand.original_text);
+      playVoiceOutput(parsedCommand.original_text, parsedCommand?.detected_language);
     }
     return () => {
       stopSpeech();
@@ -113,6 +114,7 @@ export const VoiceModal: React.FC = () => {
         unit: parsedCommand?.unit,
         confidence: 1,
         original_text: finalMsg,
+        detected_language: res.data?.detected_language || parsedCommand?.detected_language,
       });
 
       setVoiceState('completed');
@@ -168,6 +170,7 @@ export const VoiceModal: React.FC = () => {
             price: c.price_total ?? undefined,
             confidence: c.confidence ?? 0.8,
             original_text: data.confirmation_text || text,
+            detected_language: data.detected_language,
           },
           data.interaction_id
         );
@@ -182,6 +185,7 @@ export const VoiceModal: React.FC = () => {
             unit: data.unit,
             confidence: 1,
             original_text: answerText,
+            detected_language: data.detected_language,
           },
           data.interaction_id
         );
