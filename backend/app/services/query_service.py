@@ -349,7 +349,7 @@ class QueryService:
                 f"}}\n"
             )
 
-            models = ["gemini-flash-lite-latest", "gemini-flash-latest"]
+            models = [(settings.GEMINI_MODEL or "gemini-3-flash-preview").strip()]
             for model in models:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
