@@ -175,6 +175,8 @@ class NLPService:
         # Analytical and reporting queries with high confidence do not need quantity/price
         analytical_intents = {
             "COUNT_PRODUCTS",
+            "LIST_PRODUCTS",
+            "LIST_ALL_PRODUCTS",
             "COUNT_PRODUCTS_ADDED",
             "LIST_PRODUCTS_ADDED",
             "COUNT_TRANSACTIONS",
@@ -340,6 +342,21 @@ class NLPService:
             return ParsedCommand(intent="COUNT_TRANSACTIONS", operation="STOCK_OUT", time_range=time_range or "today", confidence=1.0)
         if re.search(r'\b(how\s+many\s+transactions|kitne\s+transactions|motham\s+enni\s+transactions)\b', text):
             return ParsedCommand(intent="COUNT_TRANSACTIONS", operation="ALL", time_range=time_range or "today", confidence=1.0)
+
+        # 8b. List All Products (name/list/show all products/items in inventory)
+        if re.search(
+            r'\b(name\s+all(?:\s+the)?\s+products?|list\s+all(?:\s+the)?\s+products?|list\s+all\s+items?|'
+            r'list\s+of\s+(?:all\s+)?(?:products?|items?)|(?:show|tell\s+me)\s+(?:all\s+)?(?:the\s+)?(?:names\s+of\s+)?(?:products?|items?)|'
+            r'what\s+(?:are\s+all\s+the\s+)?products?\s+(?:do\s+we\s+have|are\s+in|in\s+(?:our\s+)?inventory)|'
+            r'what\s+do\s+we\s+have\s+in\s+inventory|all\s+products\s+list|products?\s+list|all\s+products\s+in\s+(?:our\s+)?inventory|'
+            r'sare\s+products?\s+ke\s+naam|sare\s+saman\s+ke\s+naam|sabhi\s+products?\s+ke\s+naam|'
+            r'dukan\s+me\s+kya\s+kya\s+(?:saman|product|item)|dukan\s+me\s+kaun\s+kaun\s+se\s+product|'
+            r'inventory\s+me\s+kya\s+kya\s+hai|inventory\s+me\s+kaun\s+se\s+product|sare\s+product\s+dikhao|'
+            r'sare\s+saman\s+dikhao|products?\s+ki\s+list|saman\s+ki\s+list|anni\s+products\s+perlu|'
+            r'products\s+list\s+chupinchu|inventory\s+lo\s+em\s+products\s+unnai)\b',
+            text
+        ):
+            return ParsedCommand(intent="LIST_PRODUCTS", confidence=1.0)
 
         # 9. Count Total Products
         if re.search(r'\b(total\s+(?:kitna|kitne|kitni)?\s*products?|total\s+products?|how\s+many\s+(?:total\s+)?products?|how\s+many\s+(?:total\s+)?items?|(?:total|kul|motham)\s+(?:kitna|kitne|kitni|enni)?\s*(?:products?|items?|saman)|(?:products?|items?)\s+count|(?:kitna|kitne|kitni)\s+(?:products?|items?|saman))\b', text):

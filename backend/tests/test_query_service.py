@@ -253,3 +253,45 @@ async def test_ask_database_assistant_fallback(query_svc):
     assert count_res["status"] == "answered"
     assert count_res["structured_data"]["count"] == 3
 
+    # 3. Name/list all products inquiry via database assistant fallback
+    list_res = await query_svc.ask_database_assistant(db, shop_id, "name all the products we have in our inventory", "en")
+    assert list_res["status"] == "answered"
+    assert list_res["query_type"] == "LIST_PRODUCTS"
+    assert list_res["structured_data"]["count"] == 3
+    assert len(list_res["structured_data"]["items"]) == 3
+
+
+def test_list_products_parsing_and_execution(nlp):
+    queries = [
+        "name all the products we have in our inventory",
+        "list all the products",
+        "list all products",
+        "list all items",
+        "show all products",
+        "what products do we have in our inventory",
+        "sare products ke naam batao",
+        "dukan me kya kya saman hai",
+        "sabhi products ke naam",
+        "anni products perlu cheppu",
+    ]
+    for q in queries:
+        parsed = nlp.parse_command(q)
+        assert parsed.intent == "LIST_PRODUCTS", f"Failed for '{q}': got intent {parsed.intent}"
+
+
+@pytest.mark.asyncio
+async def test_query_service_list_products(query_svc):
+    shop_id = "test_shop_1"
+    db = FakeDB(shop_id)
+
+    res = await query_svc.execute_query(db, shop_id, "LIST_PRODUCTS", {})
+    assert res["status"] == "answered"
+    assert res["query_type"] == "LIST_PRODUCTS"
+    assert res["structured_data"]["count"] == 3
+    assert len(res["structured_data"]["items"]) == 3
+    names = [i["product_name"] for i in res["structured_data"]["items"]]
+    assert "Rice" in names
+    assert "Sugar" in names
+    assert "Cooking Oil" in names
+
+

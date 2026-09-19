@@ -119,6 +119,8 @@ async def handle_voice_command(
     parsed = await nlp.parse_command_with_fallback(req.transcript, detected_lang)
 
     ANALYTICAL_INTENTS = {
+        "LIST_PRODUCTS",
+        "LIST_ALL_PRODUCTS",
         "COUNT_PRODUCTS",
         "COUNT_PRODUCTS_ADDED",
         "LIST_PRODUCTS_ADDED",

@@ -137,6 +137,9 @@ class QueryService:
         elif intent in ("LIST_LOW_STOCK", "LOW_STOCK_QUERY"):
             return await self._query_list_low_stock(db, shop_id, language)
 
+        elif intent in ("LIST_PRODUCTS", "LIST_ALL_PRODUCTS"):
+            return await self._query_list_products(db, shop_id, language)
+
         elif intent in ("LIST_OUT_OF_STOCK",):
             return await self._query_list_out_of_stock(db, shop_id, language)
 
@@ -329,6 +332,7 @@ class QueryService:
                 f"- For product-specific queries like 'total rice added' or 'rice ki kitni transaction hui', use the PER-PRODUCT TRANSACTION SUMMARY.\n"
                 f"- For complex queries like 'total product entered today', count products added today ({today_prod_added}).\n"
                 f"- For 'which is lowest stock' / 'sabse kam stock kiska hai', look at current stock levels in the catalog.\n"
+                f"- For 'name all products' / 'list all products' / 'show all products' / 'sare products ke naam' / 'dukan me kya kya saman hai', use query_type 'LIST_PRODUCTS', and list the products in the catalog with their current stock and unit.\n"
                 f"- If user asks in Hindi/Hinglish, reply in Hindi/Hinglish. If Telugu, reply in Telugu. If English, reply in English.\n"
                 f"- Never say 'product not found' or 'I don't know' if the data is in the snapshot.\n"
                 f"- Never invent data. Only use what's in the snapshot.\n"
@@ -386,6 +390,8 @@ class QueryService:
 
         # 8. Deterministic fallback if Gemini is offline
         clean_lower = clean_text.lower()
+        if any(w in clean_lower for w in ("name all", "list all", "what products", "show all", "sare product", "sabhi product", "kya kya saman", "kaun kaun se product", "perlu cheppu", "products list", "saman ki list")):
+            return await self._query_list_products(db, shop_id, language)
         if any(w in clean_lower for w in ("category", "categories", "kis type", "types", "vibhag")):
             cat_str = ", ".join(categories_list)
             if language in ("hinglish", "hi", "hi_deva"):
@@ -409,7 +415,7 @@ class QueryService:
             return await self._query_top_stock(db, shop_id, "lowest", language)
         if any(w in clean_lower for w in ("highest", "maximum", "most", "sabse jyada", "ekkuva")):
             return await self._query_top_stock(db, shop_id, "highest", language)
-        if any(w in clean_lower for w in ("total", "product", "kitna", "kitne", "count", "kul", "motham")):
+        if any(w in clean_lower for w in ("total", "kitna", "kitne", "count", "kul", "motham")):
             return await self._query_count_products(db, shop_id, language)
         if any(w in clean_lower for w in ("activity", "aaj", "today", "hua", "movement")):
             return await self._query_today_activity(db, shop_id, shop_tz, language)
@@ -441,6 +447,67 @@ class QueryService:
         }
 
     # ------------------ Concrete Query Handlers ------------------
+
+    async def _query_list_products(
+        self, db: AsyncIOMotorDatabase, shop_id: str, language: str
+    ) -> Dict[str, Any]:
+        products = await db.products.find({"shop_id": shop_id, "active": True}).to_list(length=2000)
+        balances = await db.stock_balances.find({"shop_id": shop_id}).to_list(length=2000)
+        bmap = {str(b.get("product_id")): b for b in balances}
+
+        items = []
+        for p in products:
+            pid = str(p["_id"])
+            b = bmap.get(pid, {})
+            qty = float(b.get("quantity", 0))
+            unit = b.get("unit", p.get("base_unit", "piece"))
+            items.append({
+                "product_id": pid,
+                "product_name": p.get("display_name", p.get("name", "")),
+                "category": p.get("category", "General"),
+                "quantity": qty,
+                "unit": unit,
+            })
+
+        if not items:
+            if language in ("hinglish", "hi", "hi_deva"):
+                spoken = "Aapki inventory me abhi koi product nahi hai."
+                display = "📦 Inventory me koi product nahi hai."
+            elif language in ("telugish", "te", "te_script"):
+                spoken = "Mee inventory lo ippudu ae products levu."
+                display = "📦 Inventory lo ae products levu."
+            else:
+                spoken = "You don't have any products in your inventory yet."
+                display = "📦 No products in inventory."
+        else:
+            names = [i["product_name"] for i in items]
+            if len(names) <= 6:
+                names_str = ", ".join(names)
+            else:
+                names_str = ", ".join(names[:6]) + f" and {len(names) - 6} more"
+
+            if language in ("hinglish", "hi", "hi_deva"):
+                spoken = f"Aapki inventory me {len(items)} products hain: {names_str}."
+                display = f"📦 {len(items)} Products: {names_str}"
+            elif language in ("telugish", "te", "te_script"):
+                spoken = f"Mee inventory lo {len(items)} products unnai: {names_str}."
+                display = f"📦 {len(items)} Products: {names_str}"
+            else:
+                spoken = f"You have {len(items)} products in your inventory: {names_str}."
+                display = f"📦 {len(items)} Products: {names_str}"
+
+        return {
+            "status": "answered",
+            "query_type": "LIST_PRODUCTS",
+            "title": "All Products in Inventory",
+            "display_text": display,
+            "message": spoken,
+            "structured_data": {
+                "count": len(items),
+                "items": items,
+                "entity": "products",
+            },
+        }
 
     async def _query_count_products(
         self, db: AsyncIOMotorDatabase, shop_id: str, language: str

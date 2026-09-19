@@ -25,6 +25,7 @@ Supported Intents:
 - "STOCK_OUT": Removing stock, sales, items sold, dispatched (e.g., 'Sold 2 kg sugar', '5 packet becha', '3 packet noodles nikal do', '2 cartons biscuits teeseyyi').
 
 --- Database-Aware Analytical & Information Queries ---
+- "LIST_PRODUCTS": Asking to list, name, or show all products in inventory (e.g., 'Name all the products we have in our inventory', 'List all products', 'What products do we have?', 'Show all products', 'Sare products ke naam batao', 'Dukan me kya kya saman hai?', 'All products list').
 - "COUNT_PRODUCTS": Asking for total number of products (e.g., 'How many products are there?', 'Total kitne products hain?', 'How many products do I have?', 'Kul kitne products hain?').
 - "COUNT_PRODUCTS_ADDED": Asking how many products were added in a time range (e.g., 'How many products were added today?', 'Aaj kitne product add huye?', 'How many products were added this week?').
 - "LIST_PRODUCTS_ADDED": Asking which products were added (e.g., 'Which products were added today?', 'What products got added this week?', 'Aaj kaunse product add huye?').
@@ -83,6 +84,11 @@ INTENT_NORMALIZATION = {
     "LOW_STOCK": "LIST_LOW_STOCK",
     "LIST_OUT_OF_STOCK": "LIST_OUT_OF_STOCK",
     "OUT_OF_STOCK": "LIST_OUT_OF_STOCK",
+    "LIST_PRODUCTS": "LIST_PRODUCTS",
+    "LIST_ALL_PRODUCTS": "LIST_PRODUCTS",
+    "NAME_PRODUCTS": "LIST_PRODUCTS",
+    "SHOW_PRODUCTS": "LIST_PRODUCTS",
+    "LIST_ITEMS": "LIST_PRODUCTS",
     "COUNT_PRODUCTS": "COUNT_PRODUCTS",
     "TOTAL_PRODUCTS": "COUNT_PRODUCTS",
     "COUNT_PRODUCTS_ADDED": "COUNT_PRODUCTS_ADDED",

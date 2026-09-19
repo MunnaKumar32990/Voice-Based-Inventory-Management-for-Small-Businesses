@@ -498,17 +498,21 @@ export const VoiceModal: React.FC = () => {
               </div>
             )}
 
-            {/* 2. Itemized List Card (Low Stock, Out of Stock, Products Added) */}
+            {/* 2. Itemized List Card (Low Stock, Out of Stock, Products Added, List Products) */}
             {(queryType === 'LIST_LOW_STOCK' ||
               queryType === 'LOW_STOCK_QUERY' ||
               queryType === 'LIST_OUT_OF_STOCK' ||
-              queryType === 'LIST_PRODUCTS_ADDED') && (
+              queryType === 'LIST_PRODUCTS_ADDED' ||
+              queryType === 'LIST_PRODUCTS' ||
+              queryType === 'LIST_ALL_PRODUCTS') && (
               <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs text-left">
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     {queryType === 'LIST_OUT_OF_STOCK' ? (
                       <AlertCircle className="w-5 h-5 text-rose-500" />
-                    ) : queryType === 'LIST_PRODUCTS_ADDED' ? (
+                    ) : queryType === 'LIST_PRODUCTS_ADDED' ||
+                      queryType === 'LIST_PRODUCTS' ||
+                      queryType === 'LIST_ALL_PRODUCTS' ? (
                       <Package className="w-5 h-5 text-indigo-500" />
                     ) : (
                       <AlertTriangle className="w-5 h-5 text-amber-500" />
