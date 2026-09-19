@@ -5,9 +5,14 @@ class MongoDBManager:
     db = None
 
     async def connect(self, uri: str, db_name: str):
-        self.client = AsyncIOMotorClient(uri)
+        self.client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=5000)
         self.db = self.client[db_name]
-        print(f"Connected to MongoDB: {db_name}")
+        try:
+            await self.client.admin.command('ping')
+            print(f"Connected and verified MongoDB: {db_name}")
+        except Exception as e:
+            print(f"MongoDB connection verification failed: {e}")
+            raise
 
     async def disconnect(self):
         if self.client:
