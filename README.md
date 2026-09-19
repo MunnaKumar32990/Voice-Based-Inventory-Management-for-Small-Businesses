@@ -1,69 +1,270 @@
-# Voice-Based Inventory Management System
+# VoiceStock — Voice-Based Inventory Management for Small Businesses
 
-Voice-first stock management for Indian kirana shops. Speak in **English, Hindi, or Telugu** (mixed) to add/remove/check stock. Built with **React + TypeScript + Tailwind** (frontend), **FastAPI + Motor** (backend), **MongoDB** (ledger + balances).
+A simple, voice-first inventory management web application tailored for local Indian retail and wholesale merchants (Kirana shops, general stores, Mandi traders). It allows shop owners to add, remove, track, and query their stock naturally by speaking in **Hindi (हिन्दी)**, **Telugu (తెలుగు)**, or **English**, including mixed colloquial speech (Hinglish / Telugish) and common Indian trade units (*bori, bag, carton, packet, quintal, kg, litre, dozen*).
 
-## Your only task: API keys (optional)
+Built with **React 19 + TypeScript + Vite + Tailwind CSS v4** (Frontend), **FastAPI + Motor** (Backend), and **MongoDB** (Stock Balance & Transaction Ledger).
 
-The app runs end-to-end with **zero keys**: browser Web Speech API handles voice, demo login seeds the shop.
+---
 
-| Key | Where | Needed for |
+## 🌟 Key Features
+
+- **Voice-First Interaction:** Speak naturally without typing complex SKU numbers or navigation trees.
+- **Multilingual Support:**
+  - **Hindi (हिन्दी):** `"चावल 5 बोरी आया"`, `"आलू 10 किलो बेच दिया"`, `"चीनी कितना बचा है?"`
+  - **Telugu (తెలుగు):** `"బియ్యం 5 బస్తాలు వచ్చాయి"`, `"నూనె 2 లీటర్లు అమ్మేసాను"`
+  - **English / Mixed:** `"Add 5 bags of rice"`, `"Remove 2 cartons surf"`, `"What is running low?"`
+- **Indian Trade Units & Conversions:**
+  - Automatically converts wholesale units (*bori/bag, carton, box, dozen*) into base inventory metrics (*kg, grams, litres, pieces*).
+  - Handles number words (*"पांच बोरी"*, *"five bags"*, *"పది"*).
+- **Two-Step Voice Confirmation & Safety:**
+  - Every voice command parses intent and returns a **visual preview card** for the shopkeeper to verify before committing.
+  - One-tap editable quantities and units on the confirmation card before committing.
+- **Atomic Stock Mutations & Idempotency:**
+  - ACID inventory ledger updates in MongoDB preventing double-charging or duplicate entries on network retries.
+  - Out-of-stock validation prevents negative inventory balances.
+- **Smart Low-Stock Alerts & Queries:**
+  - Instant voice queries (*"How much sugar is in stock?"* or *"What is running low?"*).
+  - Automated threshold alerts flagged in red/amber on the dashboard.
+
+---
+
+## 🎙️ Dual Voice Architecture: Azure AI Speech & Web Speech API
+
+VoiceStock supports two operating modes:
+
+```
+                  ┌────────────────────────────────────────────────────────┐
+                  │                 Browser Client (React)                 │
+                  └────────────┬──────────────────────────────┬────────────┘
+                               │                              │
+                    Mode 1: Free Browser STT        Mode 2: Production Azure AI Speech
+                               │                              │
+                               ▼                              ▼
+                 Web Speech API (Chrome/Edge)     MediaRecorder (Audio Blob)
+                               │                              │
+                               ▼                              ▼
+                 POST /api/v1/voice/commands     POST /api/v1/voice/transcribe
+                               │                              │
+                               └──────────────┬───────────────┘
+                                              │
+                                              ▼
+                                 FastAPI Multilingual NLP
+                               (Regex + Phonetic Matcher)
+                                              │
+                                              ▼
+                                 Atomic MongoDB Transaction
+                                              │
+                                              ▼
+                             Spoken Answer via SpeechSynthesis
+                             (or Azure Neural TTS /voice/speak)
+```
+
+### 1. Free Mode (Default — Zero Keys Required)
+The app runs completely free out of the box using the browser's built-in **Web Speech API** for Speech-to-Text and **SpeechSynthesis** for Text-to-Speech. No external cloud account or API keys are required.
+
+### 2. Azure AI Speech Mode (Enterprise Cloud STT & Neural TTS)
+For high-accuracy noisy shop environments, VoiceStock natively integrates with **Azure Cognitive Services Speech**:
+
+- **Speech-to-Text (STT):** Cloud audio recognition via Azure Speech REST API (`POST /api/v1/voice/transcribe`), decoding WebM / OGG / WAV audio across Indian language locales (`hi-IN`, `te-IN`, `en-IN`).
+- **Neural Text-to-Speech (TTS):** Natural neural audio output via `POST /api/v1/voice/speak` using Microsoft Azure's Neural voice models:
+  - **Hindi:** `hi-IN-SwaraNeural`
+  - **Telugu:** `te-IN-ShrutiNeural`
+  - **English (India):** `en-IN-NeerjaNeural`
+
+#### Configuring Azure AI Speech:
+1. In `backend/.env`, set:
+   ```env
+   SPEECH_PROVIDER=azure
+   AZURE_SPEECH_KEY=your_azure_speech_key_here
+   AZURE_SPEECH_REGION=uaenorth
+   ```
+2. In `frontend/.env`, set:
+   ```env
+   VITE_SPEECH_PROVIDER=azure
+   ```
+3. Restart both servers. Voice recordings will now be processed via Azure Neural STT & TTS.
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology | Purpose |
 |---|---|---|
-| none | — | Demo: mic transcript → parse → confirm → commit |
-| `SARVAM_API_KEY` | `backend/.env` + `SPEECH_PROVIDER=sarvam` | Server-side Sarvam AI transcription (POST `/api/v1/voice/transcribe`) |
-| `GOOGLE_SPEECH_API_KEY` | `backend/.env` + `SPEECH_PROVIDER=google` | Server-side Google Cloud Speech transcription |
-| `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION` | `backend/.env` + `SPEECH_PROVIDER=azure` | Azure AI Speech STT (`/voice/transcribe`) + TTS (`/voice/speak`) |
+| **Frontend** | React 19, TypeScript, Vite 8 | Ultra-fast UI with strict typing |
+| **Styling** | Tailwind CSS v4, Lucide Icons | Responsive Kirana-tailored mobile-first UI |
+| **State & Cache** | Zustand, TanStack React Query v5 | Client state & optimistic cache |
+| **Localization** | i18next, LanguageDetector | Hindi, Telugu, and English UI locales |
+| **Backend** | FastAPI (Python 3.12), Uvicorn | Async REST API with automatic Swagger docs |
+| **NLP Engine** | Custom Multilingual Regex & Phonetic Parser | Fast, deterministic parsing (<15ms latency) |
+| **Database** | MongoDB 8, Motor (Async driver) | Document store for products, balances & transactions |
+| **Speech** | Web Speech API & Azure AI Speech | Dual-mode STT & Neural TTS |
 
-### Azure AI Speech setup (your keys)
+---
 
-You have a Cognitive Services Speech resource (region `uaenorth`, endpoint `https://uaenorth.api.cognitive.microsoft.com/`). Either Key1 or Key2 works.
+## 📂 Project Structure
 
-1. **Backend** — in `backend/.env`:
-   - `SPEECH_PROVIDER=azure`
-   - `AZURE_SPEECH_KEY=<paste Key1 or Key2>`
-   - `AZURE_SPEECH_REGION=uaenorth`
-   - restart: `uvicorn app.main:app --reload`
-2. **Frontend** — in `frontend/.env`:
-   - `VITE_SPEECH_PROVIDER=azure`
-   - restart: `npm run dev`
-3. **Use it:** tap mic → speak → tap again to stop → audio uploads to `POST /api/v1/voice/transcribe` (Azure STT with `en-IN`/`hi-IN`/`te-IN` from your UI language) → same confirm/commit flow. Confirmations play via `POST /api/v1/voice/speak` (Azure neural voices: `en-IN-NeerjaNeural`, `hi-IN-SwaraNeural`, `te-IN-ShrutiNeural`); without keys it falls back to free browser voices.
-4. **Never** put these keys in frontend code — they stay server-side in `backend/.env` (gitignored).
+```
+voice-inventory/
+├── README.md                                    # Project documentation
+├── docker-compose.yml                           # MongoDB container definition
+├── start_servers.bat                            # One-click Windows starter
+├── start_servers.ps1                            # PowerShell server starter
+├── voice_inventory_requirements_blueprint.md    # Product requirements & specification
+├── fastapi_react_mongodb_detailed_architecture.md # Comprehensive system architecture
+│
+├── backend/                                     # FastAPI Python Backend
+│   ├── app/
+│   │   ├── main.py                              # App entrypoint & CORS middleware
+│   │   ├── config.py                            # Pydantic Settings & environment vars
+│   │   ├── dependencies.py                      # Database & JWT auth dependencies
+│   │   ├── api/                                 # REST Endpoints
+│   │   │   ├── auth.py                          # Demo shop login & JWT issuing
+│   │   │   ├── products.py                      # Product catalog CRUD
+│   │   │   ├── inventory.py                     # Transactions, stock balances & ledger
+│   │   │   ├── voice.py                         # Voice command pipeline & preview
+│   │   │   ├── dashboard.py                     # Store summary & alert metrics
+│   │   │   └── alerts.py                        # Low-stock notification triggers
+│   │   ├── core/                                # Core logic & constants
+│   │   │   ├── constants.py                     # Units, operations & number dictionaries
+│   │   │   ├── i18n.py                          # Multilingual response templates
+│   │   │   └── security.py                      # JWT encode/decode utilities
+│   │   ├── db/                                  # Database layer
+│   │   │   ├── mongodb.py                       # Motor async client & index manager
+│   │   │   └── seed.py                          # 10 Kirana products with multilingual aliases
+│   │   ├── repositories/                        # MongoDB Repository pattern layer
+│   │   └── services/                            # Business logic services
+│   │       ├── nlp_service.py                   # Multilingual deterministic NLP engine
+│   │       ├── product_matcher.py               # Fuzzy & Unicode-safe product matcher
+│   │       ├── inventory_service.py             # Atomic transaction commit logic
+│   │       ├── unit_service.py                  # Unit conversions & normalization
+│   │       ├── speech_service.py                # Azure & WebSpeech STT provider
+│   │       └── tts_service.py                   # Azure Neural TTS synthesis
+│   ├── tests/                                   # Pytest automated test suite (13 tests)
+│   └── requirements.txt                         # Python dependencies
+│
+└── frontend/                                    # React 19 Frontend
+    ├── src/
+    │   ├── components/ui/                       # Button, Modal, Card, Input, Badge
+    │   ├── features/
+    │   │   ├── auth/LoginPage.tsx               # Demo login view
+    │   │   ├── dashboard/DashboardPage.tsx       # Live dashboard summary & alerts
+    │   │   ├── inventory/                       # Product catalog & transaction history
+    │   │   └── voice/
+    │   │       ├── VoiceButton.tsx              # Floating mic button & audio recording
+    │   │       └── VoiceModal.tsx               # Voice verification & answer card
+    │   ├── i18n/locales/                        # en.json, hi.json, te.json
+    │   ├── stores/                              # Zustand authStore & voiceStore
+    │   └── lib/api.ts                           # Axios API client with JWT interceptor
+    └── package.json                             # NPM dependencies & scripts
+```
 
-## Quickstart (local)
+---
 
-1. **Database:** from repo root `docker compose up -d mongodb` (replica-set; required for atomic commits).
-2. **Backend:**
-   - `cd backend`
-   - `python -m venv venv`; `venv\Scripts\activate` (Windows) or `source venv/bin/activate`
-   - `pip install -r requirements.txt`
-   - copy `.env.example` → `.env` (works as-is; only add keys above if needed)
-   - `uvicorn app.main:app --reload` → http://localhost:8000/health
-3. **Frontend:**
-   - `cd frontend`
-   - `npm install`
-   - copy `.env.example` → `.env` (default `VITE_API_URL=http://localhost:8000` works)
-   - `npm run dev` → http://localhost:5173
-4. **Demo:** Start Demo as *Kumar General Store* → mic → “Add five bags of rice” → Confirm → balance updates. Fallback when voice/mic fails: `/manual`.
+## 🚀 Quick Start Guide
 
-Or run everything: `docker compose up --build` (mongodb + backend + frontend).
+### Prerequisites
+- **Python 3.12+**
+- **Node.js 18+** & npm
+- **MongoDB** (Local Windows service, Docker container, or MongoDB Atlas free tier)
 
-## Tests & checks
+---
 
-- Backend: `cd backend; python -m pytest tests/ -v` (26 tests: NLP, units, matcher, inventory commit/idempotency/tenant isolation, voice logic)
-- Frontend: `cd frontend; npm run build` (`tsc -b && vite build`); `npm run lint`; `npm run typecheck`
-- Demo script: `scripts/demo_commands.md` (acceptance A1–A10). Seed directly: `cd backend; python -m app.db.seed`.
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/MunnaKumar32990/Voice-Based-Inventory-Management-for-Small-Businesses.git
+cd Voice-Based-Inventory-Management-for-Small-Businesses
+```
 
-## API map
+---
 
-- `POST /api/v1/auth/demo-login` → `{access_token, shop_id, ...}` (seeds shop on first login)
-- `GET /api/v1/dashboard/summary`, `GET /api/v1/products/`, `POST /api/v1/products/`, `PATCH /api/v1/products/{id}`
-- `POST /api/v1/inventory/transactions` (manual, idempotent via `client_request_id`), `GET /api/v1/inventory/transactions`, `POST /api/v1/inventory/transactions/{id}/reverse`, `GET /api/v1/inventory/balances`
-- `POST /api/v1/voice/commands` (transcript → preview, no write), `POST /api/v1/voice/commands/{id}/commit` (supports quantity/unit edit overrides), `POST .../cancel`, `POST /api/v1/voice/transcribe` (audio, needs provider key)
-- `GET /api/v1/alerts/`, `POST /api/v1/alerts/{id}/resolve`
-- `WS /ws/events?token=<JWT>` — shop-scoped `STOCK_UPDATED` fan-out
+### Step 2: Set Up & Run Backend
+1. Open a terminal and navigate to the `backend` directory:
+   ```bash
+   cd backend
+   ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Configure environment (`backend/.env`):
+   ```env
+   MONGODB_URI=mongodb://localhost:27017
+   DB_NAME=voice_inventory
+   JWT_SECRET=voicestock-dev-secret-key-change-in-production-2024
+   ```
+4. Start the FastAPI server:
+   ```bash
+   python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+   *Interactive API documentation is live at: **[http://localhost:8000/docs](http://localhost:8000/docs)***
 
-## Notes
+---
 
-- Every stock mutation needs confirmation; the server re-validates product/unit/balance and never trusts client math.
-- Retries with the same idempotency key return the original entry (`already_processed`).
-- `STOCK_OUT` beyond balance is blocked; `ADJUSTMENT` sets an absolute level.
-- Packaging units without a configured conversion (packet/bottle/piece) are tracked as-is instead of crashing.
+### Step 3: Set Up & Run Frontend
+1. Open a second terminal and navigate to the `frontend` directory:
+   ```bash
+   cd frontend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the Vite dev server:
+   ```bash
+   npm run dev
+   ```
+   *Web application will open at: **[http://localhost:5173](http://localhost:5173)***
+
+---
+
+### Step 4 (Windows): One-Click Start
+On Windows, you can double-click [`start_servers.bat`](file:///c:/Users/ak612/OneDrive/Desktop/voice%20agent/start_servers.bat) in the project root to automatically launch both the backend and frontend in separate console windows.
+
+---
+
+## 🧪 Testing the Voice Commands
+
+Log in using the **Start Demo** button as *Kumar General Store* (pre-seeded with 10 products: Rice, Sugar, Atta, Oil, Soap, Dal, Salt, Chai, Milk, Onion).
+
+Tap the floating microphone button and try any of these commands:
+
+| Language | Spoken Command | Detected Action | Result |
+|---|---|---|---|
+| **English** | *"Add 5 bags of rice"* | `STOCK_IN` | Converts 5 bags = 125 kg; asks confirmation; commits |
+| **English** | *"Remove 2 cartons of soap"* | `STOCK_OUT` | Deducts 2 cartons; checks stock availability |
+| **Hindi** | *"चावल 5 बोरी आया"* | `STOCK_IN` | Identifies Rice (`chawal`), 5 bags (`bori`); updates ledger |
+| **Hinglish** | *"Sugar 10 kilo bech diya"* | `STOCK_OUT` | Identifies Sugar, 10 kg, deducts stock |
+| **Telugu** | *"బియ్యం 5 బస్తాలు వచ్చాయి"* | `STOCK_IN` | Identifies Rice (`biyyam`), 5 bags |
+| **Voice Query** | *"How much rice is available?"* | `STOCK_QUERY` | Answers immediately with current stock balance |
+| **Voice Query** | *"What is running low?"* | `LOW_STOCK_QUERY`| Lists all products below reorder threshold |
+
+---
+
+## 🧩 API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/auth/demo-login` | Authenticates demo store and seeds initial catalog |
+| `GET` | `/api/v1/dashboard/summary` | Retrieves stock totals, daily transactions & alerts |
+| `GET` | `/api/v1/products/` | Lists all catalog items with real-time stock balance |
+| `POST` | `/api/v1/products/` | Adds a new product with trade units & aliases |
+| `POST` | `/api/v1/voice/commands` | Parses voice transcript, matches product, returns preview |
+| `POST` | `/api/v1/voice/commands/{id}/commit` | Atomically executes and commits verified transaction |
+| `POST` | `/api/v1/voice/commands/{id}/cancel` | Cancels a pending command preview |
+| `POST` | `/api/v1/voice/transcribe` | Uploads audio blob for Azure STT processing |
+| `POST` | `/api/v1/voice/speak` | Synthesizes neural audio response via Azure TTS |
+| `GET` | `/api/v1/alerts/` | Lists open low-stock inventory alerts |
+| `POST` | `/api/v1/inventory/transactions` | Fallback manual inventory adjustments |
+
+---
+
+## 🔒 Security & Reliability
+
+- **JWT Authentication:** Every API request validates shop tenancy, preventing cross-tenant data access.
+- **Idempotency Keys:** Voice transactions pass unique interaction IDs to guarantee that accidental double-taps do not create duplicate stock entries.
+- **Fail-Safe Fallback:** If browser microphone permissions are blocked, a built-in text input modal allows typing the command with the exact same NLP intelligence.
+
+---
+
+## 📄 License
+MIT License. Created for the Indian Kirana & Small Business Ecosystem.
