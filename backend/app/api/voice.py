@@ -6,6 +6,7 @@ from app.services.product_matcher import ProductMatcher
 from app.services.inventory_service import InventoryService
 from app.services.speech_service import SpeechService, UnsupportedProviderError
 from app.services.tts_service import TTSService
+from app.services.query_service import QueryService
 from app.dependencies import get_current_user, get_database
 from app.config import settings
 from app.core.i18n import get_response, detect_speech_dialect
@@ -24,6 +25,7 @@ matcher = ProductMatcher()
 inv = InventoryService()
 speech = SpeechService()
 tts = TTSService()
+query_svc = QueryService()
 
 
 def _format_qty(val) -> str:
@@ -116,50 +118,49 @@ async def handle_voice_command(
     # 1. Parse the transcript (deterministic first, LLM fallback if uncertain)
     parsed = await nlp.parse_command_with_fallback(req.transcript, detected_lang)
 
-    # 2. Handle query intents directly (no confirmation needed)
-    if parsed.intent == "LOW_STOCK_QUERY":
-        low_items = await inv.get_low_stock_items(db, shop_id)
-        items = _serialize_low_stock(low_items if isinstance(low_items, list) else [])
-        names = ", ".join([i["product_name"] for i in items]) if items else ""
-        return {
-            "status": "answered",
-            "intent": "LOW_STOCK_QUERY",
-            "transcript": req.transcript,
-            "detected_language": detected_lang,
-            "answer": items if items else "All items are well stocked!",
-            "message": get_response("low_stock_response", detected_lang,
-                                     items=names if names else "none") if items
-                       else ("Sabhi items stock me hain!" if detected_lang in ("hinglish", "hi", "hi_deva") else "All items are well stocked!"),
-        }
+    ANALYTICAL_INTENTS = {
+        "COUNT_PRODUCTS",
+        "COUNT_PRODUCTS_ADDED",
+        "LIST_PRODUCTS_ADDED",
+        "COUNT_TRANSACTIONS",
+        "COUNT_STOCK_IN",
+        "COUNT_STOCK_OUT",
+        "GET_TODAY_ACTIVITY",
+        "GET_STOCK_MOVEMENT",
+        "LIST_LOW_STOCK",
+        "LOW_STOCK_QUERY",
+        "LIST_OUT_OF_STOCK",
+        "GET_PRODUCT_STOCK",
+        "STOCK_QUERY",
+        "GET_CURRENT_STOCK",
+        "GET_TOP_STOCK_PRODUCTS",
+        "GET_RECENT_TRANSACTIONS",
+    }
 
-    if parsed.intent == "STOCK_QUERY":
-        if not parsed.product_text:
-            return {"status": "error", "message": "Which product do you want to check?", "detected_language": detected_lang}
-        match_res = await matcher.match_product(db, shop_id, parsed.product_text)
-        if not match_res.product:
-            return {
-                "status": "error",
-                "detected_language": detected_lang,
-                "message": get_response("product_not_found", detected_lang, product=parsed.product_text),
-            }
-        balance = await db.stock_balances.find_one({
-            "shop_id": shop_id,
-            "product_id": str(match_res.product["_id"]),
-        })
-        qty = balance["quantity"] if balance else 0
-        unit = match_res.product.get("base_unit", "piece")
-        product_name = match_res.product.get("display_name", match_res.product.get("name", ""))
+    # 2. Handle analytical & reporting query intents directly (no confirmation needed)
+    if parsed.intent in ANALYTICAL_INTENTS:
+        params = {
+            "time_range": parsed.time_range,
+            "operation": parsed.operation,
+            "order": parsed.order,
+            "limit": parsed.limit or 5,
+            "product_text": parsed.product_text,
+        }
+        res = await query_svc.execute_query(db, shop_id, parsed.intent, params, detected_lang)
         return {
-            "status": "answered",
-            "intent": "STOCK_QUERY",
+            "status": res.get("status", "answered"),
+            "intent": parsed.intent,
+            "query_type": res.get("query_type", parsed.intent),
+            "title": res.get("title", "Query Result"),
             "transcript": req.transcript,
             "detected_language": detected_lang,
-            "product_name": product_name,
-            "quantity": qty,
-            "unit": unit,
-            "message": get_response("stock_query_response", detected_lang,
-                                     product=product_name, quantity=_format_qty(qty),
-                                     balance=_format_qty(qty), unit=unit),
+            "message": res.get("message", ""),
+            "display_text": res.get("display_text", ""),
+            "answer": res.get("display_text", ""),
+            "structured_data": res.get("structured_data", {}),
+            "product_name": res.get("structured_data", {}).get("product_name"),
+            "quantity": res.get("structured_data", {}).get("quantity"),
+            "unit": res.get("structured_data", {}).get("unit"),
         }
 
     if parsed.intent == "CANCEL":

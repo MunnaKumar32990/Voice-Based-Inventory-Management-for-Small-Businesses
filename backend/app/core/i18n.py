@@ -97,7 +97,7 @@ def detect_speech_dialect(transcript: str, fallback_lang: str = "en") -> str:
         "nikala", "hatao", "dal", "daal", "dalo", "daalo", "jod", "jodo",
         "kitna", "kitne", "kitni", "bacha", "bache", "bachi", "hai", "hain",
         "kam", "laya", "kharid", "kharida", "chahiye", "dedo", "lelo", "batao", "btao",
-        "ka", "ki", "ke", "me", "mein", "se", "aur", "bhi", "itna", "chawal",
+        "ka", "ki", "ke", "mein", "se", "aur", "bhi", "itna", "chawal",
         "chini", "tel", "atta", "namak", "chai", "doodh", "pyaz", "alu", "aloo"
     }
 

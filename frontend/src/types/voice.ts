@@ -5,6 +5,7 @@ export type VoiceState =
   | 'uploading' 
   | 'transcribing' 
   | 'understanding' 
+  | 'checking_db'
   | 'needs_confirmation' 
   | 'committing' 
   | 'completed' 
@@ -21,6 +22,10 @@ export interface ParsedCommand {
   confidence: number;
   original_text: string;
   detected_language?: string;
+  query_type?: string;
+  title?: string;
+  display_text?: string;
+  structured_data?: Record<string, any>;
 }
 
 export interface VoiceCommand {
@@ -38,9 +43,13 @@ export interface BackendVoicePreview {
   transcript?: string;
   detected_language?: string;
   intent?: string;
+  query_type?: string;
+  title?: string;
+  display_text?: string;
   message?: string;
   confirmation_text?: string;
   answer?: unknown;
+  structured_data?: Record<string, any>;
   product_name?: string;
   quantity?: number;
   unit?: string;

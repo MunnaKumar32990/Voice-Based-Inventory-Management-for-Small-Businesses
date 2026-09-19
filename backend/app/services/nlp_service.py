@@ -14,6 +14,10 @@ class ParsedCommand:
     direction: Optional[str] = None
     reason: Optional[str] = None
     confidence: float = 0.0
+    time_range: Optional[str] = None
+    operation: Optional[str] = None
+    order: Optional[str] = None
+    limit: Optional[int] = None
 
 
 # Intent keywords — English, Hindi (romanized + Devanagari), Telugu
@@ -118,15 +122,32 @@ UNIT_ALIASES = {
     "పెట్టె": "box", "డజన్": "dozen", "పాకెట్": "packet",
 }
 
-# Build list of all unit variant strings for regex matching (sorted longest first)
 _UNIT_VARIANTS = sorted(UNIT_ALIASES.keys(), key=len, reverse=True)
+
+
+def extract_time_range(text: str) -> Optional[str]:
+    """Extract standard time range identifier from natural language text."""
+    t = text.lower()
+    if re.search(r'\b(today|aaj|eroju)\b', t):
+        return "today"
+    if re.search(r'\b(yesterday|kal|ninna)\b', t):
+        return "yesterday"
+    if re.search(r'\b(this\s+week|is\s+hafte|ee\s+vaaram)\b', t):
+        return "this_week"
+    if re.search(r'\b(this\s+month|is\s+mahine|ee\s+nela)\b', t):
+        return "this_month"
+    if re.search(r'\b(last\s+7\s+days|pichle\s+7\s+din)\b', t):
+        return "last_7_days"
+    if re.search(r'\b(last\s+30\s+days|pichle\s+30\s+din)\b', t):
+        return "last_30_days"
+    return None
 
 
 class NLPService:
     """Deterministic NLP parser for inventory voice commands, with optional LLM fallback.
     
-    Extracts intent, product, quantity, unit, and price from natural
-    language input in English, Hindi, and Telugu (including code-mixing).
+    Extracts intent, product, quantity, unit, price, and analytical query parameters
+    from natural language input in English, Hindi, and Telugu (including code-mixing).
     """
 
     def __init__(self):
@@ -143,19 +164,39 @@ class NLPService:
         """Determines if deterministic parsing was uncertain and would benefit from LLM fallback."""
         if parsed.intent == "UNKNOWN":
             return True
+        
+        # Analytical and reporting queries with high confidence do not need quantity/price
+        analytical_intents = {
+            "COUNT_PRODUCTS",
+            "COUNT_PRODUCTS_ADDED",
+            "LIST_PRODUCTS_ADDED",
+            "COUNT_TRANSACTIONS",
+            "GET_TODAY_ACTIVITY",
+            "LIST_LOW_STOCK",
+            "LIST_OUT_OF_STOCK",
+            "GET_TOP_STOCK_PRODUCTS",
+            "GET_RECENT_TRANSACTIONS",
+        }
+        if parsed.intent in analytical_intents:
+            return parsed.confidence < 0.8
+
         if parsed.confidence < 0.7:
             return True
+
         if parsed.intent in ("STOCK_IN", "STOCK_OUT"):
             if not parsed.product_text or parsed.quantity is None:
                 return True
             if len(parsed.product_text.split()) > 2:
                 return True
-        if parsed.intent == "STOCK_QUERY":
-            if not parsed.product_text or len(parsed.product_text.split()) > 2:
+
+        if parsed.intent in ("STOCK_QUERY", "GET_PRODUCT_STOCK"):
+            if not parsed.product_text or len(parsed.product_text.split()) > 3:
                 return True
+
         if parsed.intent == "CANCEL" and raw_text:
             if re.search(r'\d', raw_text) or len(raw_text.split()) > 3:
                 return True
+
         return False
 
     async def parse_command_with_fallback(self, transcript: str, language: str = "en") -> ParsedCommand:
@@ -182,10 +223,15 @@ class NLPService:
 
         # Normalize: lowercase for Latin chars, keep Devanagari/Telugu as-is
         text_lower = text.lower()
-        # Remove common punctuation but keep Devanagari (0900-097F) and Telugu (0C00-0C7F)
-        text_clean = re.sub(r'[^\w\s\u0900-\u097F\u0C00-\u0C7F₹]', '', text_lower)
+        text_clean = re.sub(r'[^\w\s\u0900-\u097F\u0C00-\u0C7F₹]', ' ', text_lower)
+        text_clean = re.sub(r'\s+', ' ', text_clean).strip()
 
-        # 1. Detect intent
+        # 0. Check analytical / database-aware queries first
+        analytical = self._detect_analytical_query(text_clean)
+        if analytical:
+            return analytical
+
+        # 1. Detect mutation/stock intent
         intent = self._detect_intent(text_clean)
 
         # Short-circuit for intents that don't need entities
@@ -208,7 +254,6 @@ class NLPService:
         working = self._remove_intent_keywords(working, intent)
 
         # 6. Clean up product text
-        # Remove common filler words & conversational address terms
         filler = {
             "of", "the", "a", "an", "is", "are", "ka", "ke", "ki", "ko", "se", "me", "mein",
             "karo", "no", "price", "please", "pls", "bhai", "bhaiya", "bhaiji", "customer",
@@ -232,18 +277,76 @@ class NLPService:
             confidence=confidence,
         )
 
+    def _detect_analytical_query(self, text: str) -> Optional[ParsedCommand]:
+        """Recognize analytical/reporting query patterns against the database."""
+        time_range = extract_time_range(text)
+
+        # 1. Today Activity / Inventory movement
+        if re.search(r'\b(what\s+happened\s+to\s+(?:my\s+)?inventory|today(?:\x27s|\s+)?activity|inventory\s+activity|inventory\s+updates|inventory\s+me\s+kya\s+hua|aaj\s+kya\s+hua|aaj\s+ki\s+activity|eroju\s+activity|inventory\s+lo\s+em\s+jarigindi)\b', text):
+            return ParsedCommand(intent="GET_TODAY_ACTIVITY", time_range="today", confidence=1.0)
+
+        # 2. Recent Transactions
+        if re.search(r'\b(show\s+(?:me\s+)?(?:the\s+)?(?:latest|recent)\s+transactions?|(?:latest|recent|last)\s+transactions?|aakhiri\s+transactions?|chivari\s+transactions?)\b', text):
+            return ParsedCommand(intent="GET_RECENT_TRANSACTIONS", limit=5, confidence=1.0)
+
+        # 3. Top Stock Products (Highest / Lowest)
+        if re.search(r'\b(highest\s+stock|maximum\s+stock|most\s+stock|sabse\s+jyada\s+stock|sabse\s+adhik\s+stock|ekkuva\s+stock)\b', text):
+            return ParsedCommand(intent="GET_TOP_STOCK_PRODUCTS", order="highest", confidence=1.0)
+        if re.search(r'\b(lowest\s+stock|minimum\s+stock|least\s+stock|sabse\s+kam\s+stock|thakkuva\s+stock)\b', text):
+            return ParsedCommand(intent="GET_TOP_STOCK_PRODUCTS", order="lowest", confidence=1.0)
+
+        # 4. Out of Stock
+        if re.search(r'\b(out\s+of\s+stock|khatam\s+ho\s+gaya|khatam\s+ho\s+gaye|aiypoyindi)\b', text):
+            return ParsedCommand(intent="LIST_OUT_OF_STOCK", confidence=1.0)
+
+        # 5. Low in Stock (Analytical phrasing)
+        if re.search(r'\b(what\s+products\s+are\s+low\s+in\s+stock|which\s+products\s+are\s+low|what\s+is\s+low\s+in\s+stock|products\s+low\s+in\s+stock|low\s+in\s+stock|running\s+low|shortage\s+items|kaunse\s+product\s+kam\s+hain|kam\s+stock|thakkuva\s+stock)\b', text):
+            return ParsedCommand(intent="LOW_STOCK_QUERY", confidence=1.0)
+
+        # 6. List Products Added (which/what products added ...)
+        if re.search(r'\b(which\s+products|what\s+products|what\s+was|kaunse\s+product|kaun\s+kaun\s+se\s+product|kya\s+add\s+hua|ae\s+products)\b.*?\b(added|add|jode|aaye)\b', text):
+            return ParsedCommand(intent="LIST_PRODUCTS_ADDED", time_range=time_range or "today", confidence=1.0)
+
+        # 7. Count Products Added (how many products added ...)
+        if re.search(r'\b(how\s+many\s+products|how\s+many\s+items|kitne\s+product|kitne\s+items?|enni\s+products?).*?\b(added|add|jode|chadhe|aaye)\b', text):
+            return ParsedCommand(intent="COUNT_PRODUCTS_ADDED", time_range=time_range or "today", confidence=1.0)
+
+        # 8. Count Transactions (Stock-in / Stock-out)
+        if re.search(r'\b(stock[\s-]?in\s+transactions?|stock[\s-]?in\s+hua|kitna\s+stock[\s-]?in|kitne\s+stock[\s-]?in|enni\s+stock[\s-]?in)\b', text):
+            return ParsedCommand(intent="COUNT_TRANSACTIONS", operation="STOCK_IN", time_range=time_range or "today", confidence=1.0)
+        if re.search(r'\b(stock[\s-]?out\s+transactions?|items?\s+were\s+sold|items?\s+sold|items?\s+beche|kitna\s+saman\s+becha|kitna\s+stock[\s-]?out|kitne\s+stock[\s-]?out|enni\s+ammaru)\b', text):
+            return ParsedCommand(intent="COUNT_TRANSACTIONS", operation="STOCK_OUT", time_range=time_range or "today", confidence=1.0)
+        if re.search(r'\b(how\s+many\s+transactions|kitne\s+transactions|motham\s+enni\s+transactions)\b', text):
+            return ParsedCommand(intent="COUNT_TRANSACTIONS", operation="ALL", time_range=time_range or "today", confidence=1.0)
+
+        # 9. Count Total Products
+        if re.search(r'\b(how\s+many\s+(?:total\s+)?products(?:\s+are\s+there|\s+do\s+i\s+have)?|total\s+products|total\s+kitne\s+products?|kul\s+kitne\s+products?|motham\s+enni\s+products?|products\s+count)\b', text):
+            # Only if not asking for "added"
+            if not re.search(r'\b(added|add|aaye)\b', text):
+                return ParsedCommand(intent="COUNT_PRODUCTS", time_range=time_range, confidence=1.0)
+
+        # 10. Specific Product Stock Query (e.g. "How much rice is currently available?", "rice kitna hai")
+        stock_query_match = re.search(r'\b(?:how\s+much|how\s+many)\s+([a-z\u0900-\u097F\u0C00-\u0C7F]+)\s+(?:is\s+)?(?:currently\s+)?(?:available|left|in\s+stock)\b', text)
+        if stock_query_match:
+            prod_name = stock_query_match.group(1).strip()
+            return ParsedCommand(intent="STOCK_QUERY", product_text=prod_name, confidence=1.0)
+
+        hindi_stock_match = re.search(r'([a-z\u0900-\u097F\u0C00-\u0C7F]+)\s+(?:kitna|kitne)\s+(?:hai|hain|bacha\s+hai|stock\s+hai)', text)
+        if hindi_stock_match:
+            prod_name = hindi_stock_match.group(1).strip()
+            if prod_name not in ("stock", "item", "product", "total", "aaj"):
+                return ParsedCommand(intent="STOCK_QUERY", product_text=prod_name, confidence=1.0)
+
+        return None
+
     def _detect_intent(self, text: str) -> str:
         """Detect intent from keywords. More specific intents are checked first."""
-        # CANCEL only on explicit cancel words (bare "no" removed — too many false positives).
-        # Other intents in specificity order.
         priority_order = ["LOW_STOCK_QUERY", "STOCK_QUERY", "STOCK_IN", "STOCK_OUT", "CANCEL"]
         
         for intent_name in priority_order:
             keywords = INTENT_KEYWORDS.get(intent_name, [])
-            # Sort keywords by length descending to match longer phrases first
             for kw in sorted(keywords, key=len, reverse=True):
                 if re.search(r'(?:^|\s)' + re.escape(kw) + r'(?:\s|$)', text):
-                    # For CANCEL, ignore if text contains digits or known units (indicates correction/command)
                     if intent_name == "CANCEL":
                         if re.search(r'\d', text) or any(u in text for u in ("kg", "packet", "bora", "bori", "bag", "carton", "box")):
                             continue
@@ -267,14 +370,12 @@ class NLPService:
 
     def _extract_quantity(self, text: str) -> tuple[Optional[Decimal], str]:
         """Extract numeric quantity — digits first (incl. attached units like 5kg), then number words."""
-        # Attached or spaced digits: "5kg", "5 bags", "2.5 litres"
         num_match = re.search(r'(?:^|\s)(\d+(?:\.\d+)?)(?=\s|$|[a-z\u0900-\u097F\u0C00-\u0C7F])', text)
         if num_match:
             quantity = Decimal(num_match.group(1))
             text = text[:num_match.start()] + " " + text[num_match.end():]
             return quantity, text.strip()
 
-        # Try number words (sorted longest first to avoid partial matches)
         for word, val in sorted(NUMBER_WORDS.items(), key=lambda x: len(x[0]), reverse=True):
             pattern = r'(?:^|\s)' + re.escape(word) + r'(?:\s|$)'
             if re.search(pattern, text):
@@ -300,7 +401,6 @@ class NLPService:
             pattern = r'(?:^|\s)' + re.escape(kw) + r'(?:\s|$)'
             text = re.sub(pattern, ' ', text)
 
-        # Also strip common auxiliary verbs & particles from product candidate
         aux_tokens = [
             "add kro", "remove kro", "kro", "karo", "kardo", "kar do", "kar", "do",
             "diya", "de diya", "gaya", "gaye", "gayi", "hai", "hain", "tha", "thi",
@@ -323,8 +423,7 @@ class NLPService:
         if intent != "UNKNOWN":
             score += 0.3
 
-        if intent in ("STOCK_QUERY",):
-            # Queries only need product
+        if intent in ("STOCK_QUERY", "GET_PRODUCT_STOCK"):
             if product_text:
                 score += 0.5
             return min(score, 1.0)

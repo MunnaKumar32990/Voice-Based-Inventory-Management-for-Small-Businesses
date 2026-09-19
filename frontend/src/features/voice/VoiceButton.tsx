@@ -127,9 +127,10 @@ export const VoiceButton: React.FC = () => {
       );
       setVoiceState('needs_confirmation');
     } else if (status === 'answered') {
-      // Query answered directly — show as completed with the message
+      // Query answered directly — show as completed with the structured message & data
       const answerText =
         data.message ||
+        data.display_text ||
         (typeof data.answer === 'string'
           ? data.answer
           : `Answer: ${JSON.stringify(data.answer)}`);
@@ -143,11 +144,15 @@ export const VoiceButton: React.FC = () => {
           confidence: 1,
           original_text: answerText,
           detected_language: data.detected_language,
+          query_type: data.query_type,
+          title: data.title,
+          display_text: data.display_text,
+          structured_data: data.structured_data,
         },
         data.interaction_id
       );
       setVoiceState('completed');
-      later(() => useVoiceStore.getState().reset(), 12000);
+      later(() => useVoiceStore.getState().reset(), 15000);
     } else if (status === 'clarification_needed' || status === 'error') {
       const candidates = (data.candidates || []).map((c) => c.name).join(', ');
       setError(

@@ -1,7 +1,7 @@
-"""Gemini Flash LLM parser for inventory voice commands.
+"""Gemini Flash LLM parser for inventory voice commands and analytical queries.
 
 Used as a structured-intent fallback when deterministic regex/rule-based NLP
-parsing is uncertain (e.g. UNKNOWN intent, low confidence, complex phrasing).
+parsing is uncertain (e.g. UNKNOWN intent, low confidence, complex phrasing, or analytical questions).
 """
 import json
 import logging
@@ -20,27 +20,46 @@ Your job is to extract structured intent and entities from voice transcripts spo
 The input can be in English, Hindi (Devanagari or Romanized Hinglish), Telugu (Telugu script or Romanized Telugish), or code-mixed.
 
 Supported Intents:
+--- Inventory Mutations ---
 - "STOCK_IN": Adding stock, purchases, incoming goods, stock received (e.g., 'Add 5 kg rice', '10 packet maggi aayi', 'bhaiya 20 peti biscuit laya', 'rice 5 bags vachindi').
 - "STOCK_OUT": Removing stock, sales, items sold, dispatched (e.g., 'Sold 2 kg sugar', '5 packet becha', '3 packet noodles nikal do', '2 cartons biscuits teeseyyi').
-- "STOCK_QUERY": Checking availability or stock balance (e.g., 'How much rice is left?', 'Chawal kitna bacha hai?', 'Sugar stock check karo', 'Biyyam entha undi?').
-- "LOW_STOCK_QUERY": Asking which items are running low or need reordering (e.g., 'What is running low?', 'Kaunsa item kam hai?', 'Reorder list dikhao', 'Ee items thakkuva ga unnai?').
+
+--- Database-Aware Analytical & Information Queries ---
+- "COUNT_PRODUCTS": Asking for total number of products (e.g., 'How many products are there?', 'Total kitne products hain?', 'How many products do I have?', 'Kul kitne products hain?').
+- "COUNT_PRODUCTS_ADDED": Asking how many products were added in a time range (e.g., 'How many products were added today?', 'Aaj kitne product add huye?', 'How many products were added this week?').
+- "LIST_PRODUCTS_ADDED": Asking which products were added (e.g., 'Which products were added today?', 'What products got added this week?', 'Aaj kaunse product add huye?').
+- "COUNT_TRANSACTIONS": Asking for transaction counts (e.g., 'How many stock-in transactions happened today?', 'How many stock-out transactions today?', 'How many items were sold today?', 'Aaj kitna stock in hua?').
+- "GET_TODAY_ACTIVITY": Asking for today's overall activity/movement (e.g., 'What happened to my inventory today?', 'Today activity', 'Aaj inventory me kya hua?').
+- "LIST_LOW_STOCK": Asking which items are running low or need reordering (e.g., 'What products are low in stock?', 'Kaunse product kam hain?', 'Reorder list dikhao').
+- "LIST_OUT_OF_STOCK": Asking which items are completely out of stock (e.g., 'Which products are out of stock?', 'Kaunsa item khatam ho gaya?', 'Out of stock items').
+- "GET_PRODUCT_STOCK": Checking stock level of a specific product (e.g., 'How much rice is currently available?', 'Chawal kitna bacha hai?', 'Sugar stock check karo').
+- "GET_TOP_STOCK_PRODUCTS": Asking for highest or lowest stock items (e.g., 'Which product has the highest stock?', 'Sabse jyada stock kiska hai?', 'Which product has the lowest stock?').
+- "GET_RECENT_TRANSACTIONS": Asking for latest or recent transactions (e.g., 'Show me the latest transactions', 'Aakhiri transactions dikhao', 'Recent activity').
+
+--- General ---
 - "CANCEL": Cancelling an action (e.g., 'Cancel', 'Ruko mat karo', 'Nahi rehne do', 'Raddhu cheyyi').
-- "UNKNOWN": Completely unintelligible, unrelated chatter, or cannot determine any inventory intent.
+- "UNKNOWN": Unintelligible, unrelated chatter, or unresolvable.
 
 Entity Rules:
-- product_text: The clean name of the product (e.g., "rice", "sugar", "maggi", "sunflower oil"). Strip out polite words ("bhaiya", "please") and quantity words. Set to null if intent is LOW_STOCK_QUERY or CANCEL, or product is unknown.
-- quantity: Numeric value as a positive float (e.g., 5.0, 10.0, 0.5, 2.5). null if not specified.
-- unit: The unit of measurement in standard form (e.g., "kg", "gram", "packet", "bag", "carton", "box", "piece", "bottle", "litre"). null if not specified.
-- price_total: Numeric total monetary value if mentioned in rupees (e.g., 'aur 500 rupaye lage' -> 500.0). null if not specified.
-- confidence: Float from 0.0 to 1.0 reflecting how confident you are in this interpretation.
+- product_text: Clean product name (e.g. "rice", "sugar", "maggi"). null if not applicable.
+- quantity: Numeric float (e.g. 5.0, 10.0, 0.5). null if not specified.
+- unit: Measurement unit (e.g. "kg", "gram", "packet", "bag", "carton", "box", "piece", "bottle", "litre"). null if not specified.
+- price_total: Monetary value in rupees if mentioned (e.g. '500 rupaye' -> 500.0). null if not specified.
+- time_range: "today" | "yesterday" | "this_week" | "this_month" | "last_7_days" | "last_30_days" | "all_time" | null. (e.g. 'today' -> "today", 'aaj' -> "today", 'is hafte' -> "this_week").
+- operation: "STOCK_IN" | "STOCK_OUT" | "ALL" | null (for transaction queries).
+- order: "highest" | "lowest" | null (for top stock query).
+- confidence: Float from 0.0 to 1.0.
 
 Respond with strictly valid JSON matching this schema:
 {
-  "intent": "STOCK_IN" | "STOCK_OUT" | "STOCK_QUERY" | "LOW_STOCK_QUERY" | "CANCEL" | "UNKNOWN",
+  "intent": string,
   "product_text": string or null,
   "quantity": number or null,
   "unit": string or null,
   "price_total": number or null,
+  "time_range": string or null,
+  "operation": string or null,
+  "order": string or null,
   "confidence": number
 }
 """
@@ -55,11 +74,24 @@ INTENT_NORMALIZATION = {
     "REMOVE_INVENTORY": "STOCK_OUT",
     "SELL": "STOCK_OUT",
     "SALE": "STOCK_OUT",
-    "STOCK_QUERY": "STOCK_QUERY",
-    "QUERY": "STOCK_QUERY",
-    "CHECK_STOCK": "STOCK_QUERY",
-    "LOW_STOCK_QUERY": "LOW_STOCK_QUERY",
-    "LOW_STOCK": "LOW_STOCK_QUERY",
+    "STOCK_QUERY": "GET_PRODUCT_STOCK",
+    "GET_PRODUCT_STOCK": "GET_PRODUCT_STOCK",
+    "GET_CURRENT_STOCK": "GET_PRODUCT_STOCK",
+    "CHECK_STOCK": "GET_PRODUCT_STOCK",
+    "LOW_STOCK_QUERY": "LIST_LOW_STOCK",
+    "LIST_LOW_STOCK": "LIST_LOW_STOCK",
+    "LOW_STOCK": "LIST_LOW_STOCK",
+    "LIST_OUT_OF_STOCK": "LIST_OUT_OF_STOCK",
+    "OUT_OF_STOCK": "LIST_OUT_OF_STOCK",
+    "COUNT_PRODUCTS": "COUNT_PRODUCTS",
+    "TOTAL_PRODUCTS": "COUNT_PRODUCTS",
+    "COUNT_PRODUCTS_ADDED": "COUNT_PRODUCTS_ADDED",
+    "LIST_PRODUCTS_ADDED": "LIST_PRODUCTS_ADDED",
+    "COUNT_TRANSACTIONS": "COUNT_TRANSACTIONS",
+    "GET_TODAY_ACTIVITY": "GET_TODAY_ACTIVITY",
+    "GET_STOCK_MOVEMENT": "GET_TODAY_ACTIVITY",
+    "GET_TOP_STOCK_PRODUCTS": "GET_TOP_STOCK_PRODUCTS",
+    "GET_RECENT_TRANSACTIONS": "GET_RECENT_TRANSACTIONS",
     "CANCEL": "CANCEL",
     "UNKNOWN": "UNKNOWN",
 }
@@ -174,6 +206,24 @@ class LLMParser:
                         except Exception:
                             price = None
 
+                    time_range = parsed_data.get("time_range")
+                    if time_range and isinstance(time_range, str):
+                        time_range = time_range.strip().lower()
+                    else:
+                        time_range = None
+
+                    operation = parsed_data.get("operation")
+                    if operation and isinstance(operation, str):
+                        operation = operation.strip().upper()
+                    else:
+                        operation = None
+
+                    order = parsed_data.get("order")
+                    if order and isinstance(order, str):
+                        order = order.strip().lower()
+                    else:
+                        order = None
+
                     conf = float(parsed_data.get("confidence", 0.9))
 
                     return ParsedCommand(
@@ -182,6 +232,9 @@ class LLMParser:
                         quantity=qty,
                         unit=unit,
                         price_total=price,
+                        time_range=time_range,
+                        operation=operation,
+                        order=order,
                         confidence=conf,
                     )
 
