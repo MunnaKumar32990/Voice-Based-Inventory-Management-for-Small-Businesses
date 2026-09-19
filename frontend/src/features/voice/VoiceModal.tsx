@@ -734,6 +734,66 @@ export const VoiceModal: React.FC = () => {
               </div>
             )}
 
+            {/* 7. Category & General Store Insights Card */}
+            {(queryType === 'CATEGORY_QUERY' ||
+              queryType === 'GENERAL_QUERY' ||
+              (![
+                'COUNT_PRODUCTS',
+                'COUNT_PRODUCTS_ADDED',
+                'COUNT_TRANSACTIONS',
+                'LIST_LOW_STOCK',
+                'LOW_STOCK_QUERY',
+                'LIST_OUT_OF_STOCK',
+                'LIST_PRODUCTS_ADDED',
+                'GET_TODAY_ACTIVITY',
+                'GET_RECENT_TRANSACTIONS',
+                'GET_PRODUCT_STOCK',
+                'GET_TOP_STOCK_PRODUCTS',
+              ].includes(queryType || '') &&
+                isQuery &&
+                parsedCommand?.display_text)) && (
+              <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-sm text-left">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                    <h4 className="font-bold text-gray-900 text-base">
+                      {parsedCommand?.title || 'Store Insights'}
+                    </h4>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Live Database
+                  </span>
+                </div>
+                {parsedCommand?.display_text && (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200/60 rounded-xl">
+                    <p className="text-base font-semibold text-gray-900 leading-relaxed">
+                      {parsedCommand.display_text}
+                    </p>
+                  </div>
+                )}
+                {Array.isArray(structuredData.items) && structuredData.items.length > 0 && (
+                  <div className="mt-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      Available Categories / Items
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {structuredData.items.map((item: any, idx: number) => {
+                        const name = typeof item === 'string' ? item : item.name || item.product_name;
+                        return (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-100"
+                          >
+                            {name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Voice Audio Visualizer & Spoken Sentence Box */}
             <div className="bg-gradient-to-b from-indigo-50/80 to-white border-2 border-indigo-200 rounded-2xl p-5 text-center shadow-xs">
               <VoiceVisualizer

@@ -147,6 +147,8 @@ async def handle_voice_command(
             "product_text": parsed.product_text,
         }
         res = await query_svc.execute_query(db, shop_id, parsed.intent, params, detected_lang)
+        if res.get("status") == "error":
+            res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
         return {
             "status": res.get("status", "answered"),
             "intent": parsed.intent,
@@ -172,6 +174,21 @@ async def handle_voice_command(
         return {"status": "cancelled", "message": cancel_msg, "detected_language": detected_lang}
 
     if parsed.intent == "UNKNOWN":
+        # Pass to whole database conversational assistant
+        db_res = await query_svc.ask_database_assistant(db, shop_id, req.transcript, detected_lang)
+        if db_res.get("status") == "answered":
+            return {
+                "status": "answered",
+                "intent": db_res.get("query_type", "GENERAL_QUERY"),
+                "query_type": db_res.get("query_type", "GENERAL_QUERY"),
+                "title": db_res.get("title", "Store Information"),
+                "transcript": req.transcript,
+                "detected_language": detected_lang,
+                "message": db_res.get("message", ""),
+                "display_text": db_res.get("display_text", ""),
+                "answer": db_res.get("display_text", ""),
+                "structured_data": db_res.get("structured_data", {}),
+            }
         unk_msg = "I didn't understand that. Try saying 'Add 5 bags of rice' or 'How much sugar is available?'"
         if detected_lang in ("hinglish", "hi", "hi_deva"):
             unk_msg = "Samajh nahi aaya. Kripya '5 kg rice add kro' ya 'chawal kitna hai' boliye."

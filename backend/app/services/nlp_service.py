@@ -143,6 +143,13 @@ def extract_time_range(text: str) -> Optional[str]:
     return None
 
 
+META_PRODUCT_WORDS = {
+    "total", "products", "product", "item", "items", "saman", "all",
+    "sab", "sabhi", "overall", "inventory", "dukan", "everything",
+    "list", "status", "category", "categories"
+}
+
+
 class NLPService:
     """Deterministic NLP parser for inventory voice commands, with optional LLM fallback.
     
@@ -173,6 +180,7 @@ class NLPService:
             "COUNT_TRANSACTIONS",
             "GET_TODAY_ACTIVITY",
             "LIST_LOW_STOCK",
+            "LOW_STOCK_QUERY",
             "LIST_OUT_OF_STOCK",
             "GET_TOP_STOCK_PRODUCTS",
             "GET_RECENT_TRANSACTIONS",
@@ -190,7 +198,12 @@ class NLPService:
                 return True
 
         if parsed.intent in ("STOCK_QUERY", "GET_PRODUCT_STOCK"):
-            if not parsed.product_text or len(parsed.product_text.split()) > 3:
+            if not parsed.product_text:
+                return True
+            p_words = set(parsed.product_text.lower().split())
+            if p_words.issubset(META_PRODUCT_WORDS) or any(w in p_words for w in ("total", "all", "sabhi", "overall", "everything")):
+                return True
+            if len(parsed.product_text.split()) > 3:
                 return True
 
         if parsed.intent == "CANCEL" and raw_text:
@@ -268,6 +281,15 @@ class NLPService:
         # 7. Calculate confidence
         confidence = self._calculate_confidence(intent, product_text, quantity, unit)
 
+        # Meta-word guard: phrases like "total products" or "all items" are NEVER a single product
+        if intent in ("STOCK_QUERY", "GET_PRODUCT_STOCK") and product_text:
+            p_words = set(product_text.lower().split())
+            if p_words.issubset(META_PRODUCT_WORDS) or any(w in p_words for w in ("total", "all", "sabhi", "overall", "everything")):
+                if any(w in p_words for w in ("total", "kitna", "kitne", "kitni", "count", "kul", "motham")):
+                    return ParsedCommand(intent="COUNT_PRODUCTS", time_range=None, confidence=1.0)
+                else:
+                    return ParsedCommand(intent="UNKNOWN", confidence=0.0)
+
         return ParsedCommand(
             intent=intent,
             product_text=product_text if product_text else None,
@@ -320,9 +342,9 @@ class NLPService:
             return ParsedCommand(intent="COUNT_TRANSACTIONS", operation="ALL", time_range=time_range or "today", confidence=1.0)
 
         # 9. Count Total Products
-        if re.search(r'\b(how\s+many\s+(?:total\s+)?products(?:\s+are\s+there|\s+do\s+i\s+have)?|total\s+products|total\s+kitne\s+products?|kul\s+kitne\s+products?|motham\s+enni\s+products?|products\s+count)\b', text):
+        if re.search(r'\b(total\s+(?:kitna|kitne|kitni)?\s*products?|total\s+products?|how\s+many\s+(?:total\s+)?products?|how\s+many\s+(?:total\s+)?items?|(?:total|kul|motham)\s+(?:kitna|kitne|kitni|enni)?\s*(?:products?|items?|saman)|(?:products?|items?)\s+count|(?:kitna|kitne|kitni)\s+(?:products?|items?|saman))\b', text):
             # Only if not asking for "added"
-            if not re.search(r'\b(added|add|aaye)\b', text):
+            if not re.search(r'\b(added|add|aaye|jode|chadhe)\b', text):
                 return ParsedCommand(intent="COUNT_PRODUCTS", time_range=time_range, confidence=1.0)
 
         # 10. Specific Product Stock Query (e.g. "How much rice is currently available?", "rice kitna hai")

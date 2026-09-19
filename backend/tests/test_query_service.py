@@ -219,3 +219,37 @@ async def test_query_service_execution(query_svc):
     # 5. Multilingual output test (Hindi)
     res5_hi = await query_svc.execute_query(db, shop_id, "COUNT_PRODUCTS", {}, language="hinglish")
     assert "kul 3 products hain" in res5_hi["message"]
+
+
+def test_meta_product_words_and_total_kitna_queries(nlp):
+    # Bug reported in screenshot: 'total kitna products hai' failing with 'Maaf karein, total products nahi mila'
+    queries = [
+        "total kitna products hai",
+        "total kitne products hain",
+        "meri dukan me kitna products hai",
+        "total products kitna hai",
+        "kitne products hain",
+        "total items kitne hain",
+        "dukan me total kitne products hai",
+    ]
+    for q in queries:
+        parsed = nlp.parse_command(q)
+        assert parsed.intent == "COUNT_PRODUCTS", f"Failed for '{q}': got intent {parsed.intent}"
+
+
+@pytest.mark.asyncio
+async def test_ask_database_assistant_fallback(query_svc):
+    shop_id = "test_shop_1"
+    db = FakeDB(shop_id)
+
+    # 1. Broad category inquiry
+    cat_res = await query_svc.ask_database_assistant(db, shop_id, "dukan me kya categories hai", "hinglish")
+    assert cat_res["status"] == "answered"
+    assert cat_res["query_type"] == "CATEGORY_QUERY"
+    assert "Categories" in cat_res["title"]
+
+    # 2. Total count inquiry via database assistant fallback
+    count_res = await query_svc.ask_database_assistant(db, shop_id, "total kitna products hai", "hinglish")
+    assert count_res["status"] == "answered"
+    assert count_res["structured_data"]["count"] == 3
+

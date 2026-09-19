@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Gemini LLM Fallback (when deterministic voice parsing is uncertain)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-flash-latest"
+    GEMINI_MODEL: str = "gemini-flash-lite-latest"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

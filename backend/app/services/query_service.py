@@ -5,6 +5,8 @@ strictly scoped to the authenticated user's shop_id.
 Generates synchronized dual outputs: structured data for conversational UI cards
 and identical natural-language spoken text in English, Hindi/Hinglish, or Telugu/Telugish.
 """
+import json
+import httpx
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -16,6 +18,7 @@ try:
 except ImportError:
     ZoneInfo = None
 
+from app.config import settings
 from app.services.product_matcher import ProductMatcher
 
 
@@ -150,14 +153,189 @@ class QueryService:
             return await self._query_recent_transactions(db, shop_id, limit, language)
 
         else:
+            transcript = params.get("transcript") or params.get("product_text") or intent
+            return await self.ask_database_assistant(db, shop_id, transcript, language)
+
+    async def ask_database_assistant(
+        self,
+        db: AsyncIOMotorDatabase,
+        shop_id: str,
+        transcript: str,
+        language: str = "en",
+    ) -> Dict[str, Any]:
+        """Conversational database assistant that answers arbitrary store questions
+        directly using a live MongoDB snapshot of products, balances, transactions, and alerts.
+        """
+        clean_text = transcript.strip() if transcript else ""
+        shop = await db.shops.find_one({"_id": _safe_oid(shop_id)})
+        if not shop:
+            shop = await db.shops.find_one({"_id": shop_id})
+        shop_name = shop.get("name", "Your Store") if shop else "Your Store"
+        shop_tz = shop.get("timezone", "Asia/Kolkata") if shop else "Asia/Kolkata"
+
+        # 1. Fetch live products and balances
+        products = await db.products.find({"shop_id": shop_id, "active": True}).to_list(length=200)
+        balances = await db.stock_balances.find({"shop_id": shop_id}).to_list(length=200)
+        bmap = {str(b.get("product_id")): b for b in balances}
+
+        catalog = []
+        low_stock_items = []
+        out_of_stock_items = []
+        for p in products:
+            pid = str(p["_id"])
+            b = bmap.get(pid, {})
+            qty = float(b.get("quantity", 0))
+            unit = b.get("unit", p.get("base_unit", "piece"))
+            thr = float(p.get("reorder_threshold", 0))
+            status = "OK"
+            if qty <= 0:
+                status = "OUT_OF_STOCK"
+                out_of_stock_items.append(p.get("display_name", p.get("name")))
+            elif qty <= thr:
+                status = "LOW_STOCK"
+                low_stock_items.append(f"{p.get('display_name', p.get('name'))} ({_format_num(qty)} {unit})")
+            catalog.append({
+                "name": p.get("display_name", p.get("name")),
+                "category": p.get("category", "General"),
+                "stock": _format_num(qty),
+                "unit": unit,
+                "reorder_threshold": _format_num(thr),
+                "status": status,
+            })
+
+        # 2. Fetch today's activity
+        bounds = resolve_date_range("today", shop_tz)
+        time_cond = {"$or": [
+            {"timestamp": {"$gte": bounds[0], "$lte": bounds[1]}},
+            {"created_at": {"$gte": bounds[0], "$lte": bounds[1]}},
+        ]} if bounds else {}
+
+        in_count = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_IN", **time_cond})
+        out_count = await db.transactions.count_documents({"shop_id": shop_id, "operation": "STOCK_OUT", **time_cond})
+        prod_count = await db.products.count_documents({"shop_id": shop_id, "active": True, "created_at": {"$gte": bounds[0], "$lte": bounds[1]}}) if bounds else 0
+
+        # 3. If Gemini is configured, use it for zero-shot natural understanding over DB
+        categories_list = sorted(list({p.get("category", "") for p in products if p.get("category")}))
+        api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
+        if api_key:
+            prompt = (
+                f"You are the intelligent database-aware voice assistant for '{shop_name}'.\n"
+                f"Your job is to answer the user's natural language question accurately and truthfulness based ONLY on the live database snapshot below.\n\n"
+                f"--- LIVE DATABASE SNAPSHOT ---\n"
+                f"Total Active Products: {len(products)}\n"
+                f"Product Categories: {json.dumps(categories_list)}\n"
+                f"Products Catalog: {json.dumps(catalog[:40])}\n"
+                f"Today's Activity: {in_count} stock-in transactions, {out_count} stock-out transactions, {prod_count} products added today\n"
+                f"Low Stock Items ({len(low_stock_items)}): {', '.join(low_stock_items) if low_stock_items else 'None'}\n"
+                f"Out of Stock Items ({len(out_of_stock_items)}): {', '.join(out_of_stock_items) if out_of_stock_items else 'None'}\n\n"
+                f"User Question: \"{clean_text}\"\n"
+                f"Detected Language/Dialect: {language}\n\n"
+                f"Instructions:\n"
+                f"- If user asks about total products / how many products (e.g. 'total kitna products hai', 'how many products'), state total products ({len(products)}).\n"
+                f"- If user asks in Hindi / Hinglish, answer naturally in Hindi / Hinglish.\n"
+                f"- If user asks in Telugu / Telugish, answer in Telugu.\n"
+                f"- If user asks in English, answer in English.\n"
+                f"- Never say 'product not found' if they are asking an analytical, count, or summary question.\n"
+                f"- Output strictly valid JSON matching this schema:\n"
+                f"{{\n"
+                f'  "title": "Short descriptive title for UI card",\n'
+                f'  "query_type": "COUNT_PRODUCTS" | "LIST_PRODUCTS" | "GET_PRODUCT_STOCK" | "GET_TODAY_ACTIVITY" | "CATEGORY_QUERY" | "GENERAL_QUERY",\n'
+                f'  "display_text": "Visual summary text with emoji for UI card",\n'
+                f'  "spoken_text": "Natural spoken sentence for TTS audio output",\n'
+                f'  "structured_data": {{\n'
+                f'    "count": number or null,\n'
+                f'    "items": array or null,\n'
+                f'    "entity": string or null\n'
+                f'  }}\n'
+                f"}}\n"
+            )
+
+            models = ["gemini-flash-lite-latest", "gemini-flash-latest"]
+            for model in models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                    body = {
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "response_mime_type": "application/json",
+                            "temperature": 0.1,
+                        }
+                    }
+                    async with httpx.AsyncClient(timeout=4.5) as client:
+                        resp = await client.post(
+                            url,
+                            headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
+                            json=body,
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            candidates = data.get("candidates") or []
+                            if candidates:
+                                text_out = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                                if text_out:
+                                    parsed_resp = json.loads(text_out)
+                                    return {
+                                        "status": "answered",
+                                        "query_type": parsed_resp.get("query_type", "GENERAL_QUERY"),
+                                        "title": parsed_resp.get("title", "Store Information"),
+                                        "display_text": parsed_resp.get("display_text", ""),
+                                        "message": parsed_resp.get("spoken_text", parsed_resp.get("display_text", "")),
+                                        "structured_data": parsed_resp.get("structured_data", {}),
+                                    }
+                except Exception:
+                    continue
+
+        # 4. Deterministic fallback if Gemini is offline
+        clean_lower = clean_text.lower()
+        if any(w in clean_lower for w in ("category", "categories", "kis type", "types", "vibhag")):
+            cat_str = ", ".join(categories_list)
+            if language in ("hinglish", "hi", "hi_deva"):
+                spoken = f"Dukan me {len(categories_list)} categories hain: {cat_str}."
+                display = f"📦 {len(categories_list)} Categories: {cat_str}"
+            elif language in ("telugish", "te", "te_script"):
+                spoken = f"Shop lo {len(categories_list)} categories unnai: {cat_str}."
+                display = f"📦 {len(categories_list)} Categories: {cat_str}"
+            else:
+                spoken = f"There are {len(categories_list)} categories: {cat_str}."
+                display = f"📦 {len(categories_list)} Categories: {cat_str}"
             return {
-                "status": "error",
-                "query_type": "UNKNOWN",
-                "title": "Query Not Supported",
-                "display_text": "I could not find an answer to that question in your inventory.",
-                "message": "Samajh nahi aaya. Kripya doobara boliye." if language in ("hinglish", "hi", "hi_deva") else "I could not answer that question.",
-                "structured_data": {},
+                "status": "answered",
+                "query_type": "CATEGORY_QUERY",
+                "title": "Store Categories",
+                "display_text": display,
+                "message": spoken,
+                "structured_data": {"count": len(categories_list), "items": categories_list},
             }
+        if any(w in clean_lower for w in ("total", "product", "kitna", "kitne", "count", "kul", "motham")):
+            return await self._query_count_products(db, shop_id, language)
+        if any(w in clean_lower for w in ("activity", "aaj", "today", "hua", "movement")):
+            return await self._query_today_activity(db, shop_id, shop_tz, language)
+        if any(w in clean_lower for w in ("low", "kam", "shortage", "reorder")):
+            return await self._query_list_low_stock(db, shop_id, language)
+        if any(w in clean_lower for w in ("out of stock", "khatam")):
+            return await self._query_list_out_of_stock(db, shop_id, language)
+
+        # General store summary fallback
+        if language in ("hinglish", "hi", "hi_deva"):
+            spoken = f"Aapki dukan me kul {len(products)} products hain. Aaj {in_count} stock-in aur {out_count} stock-out transactions huye."
+            display = f"📦 {len(products)} Products | Aaj: {in_count} In, {out_count} Out"
+        else:
+            spoken = f"You have {len(products)} products in your inventory. Today you had {in_count} stock-in and {out_count} stock-out transactions."
+            display = f"📦 {len(products)} Products | Today: {in_count} In, {out_count} Out"
+
+        return {
+            "status": "answered",
+            "query_type": "GET_TODAY_ACTIVITY",
+            "title": "Inventory Overview",
+            "display_text": display,
+            "message": spoken,
+            "structured_data": {
+                "count": len(products),
+                "today_stock_in": in_count,
+                "today_stock_out": out_count,
+                "products_added": prod_count,
+            },
+        }
 
     # ------------------ Concrete Query Handlers ------------------
 
@@ -553,16 +731,16 @@ class QueryService:
             if candidates:
                 cand_str = ", ".join(candidates[:3])
                 msg = f"Multiple items match '{product_text}': {cand_str}."
-            else:
-                msg = f"Product '{product_text}' not found."
-            return {
-                "status": "error",
-                "query_type": "GET_PRODUCT_STOCK",
-                "title": "Product Not Found",
-                "display_text": msg,
-                "message": msg,
-                "structured_data": {"candidates": candidates},
-            }
+                return {
+                    "status": "error",
+                    "query_type": "GET_PRODUCT_STOCK",
+                    "title": "Product Not Found",
+                    "display_text": msg,
+                    "message": msg,
+                    "structured_data": {"candidates": candidates},
+                }
+            # Fallback to general conversational database assistant
+            return await self.ask_database_assistant(db, shop_id, product_text, language)
 
         prod = match.product
         pid = str(prod["_id"])
