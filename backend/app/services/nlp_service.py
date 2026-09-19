@@ -24,8 +24,9 @@ INTENT_KEYWORDS = {
         # Hindi romanized
         "aaya", "aagaya", "aaye", "laya", "kharid", "kharida", "dal", "daal", "dalo", "daalo",
         "jod", "jodo", "add karo", "add kro", "kro", "karo", "kardo", "dal do",
+        "likh lo", "likh do", "likho", "likhna", "entry karo", "chadha lo",
         # Hindi Devanagari
-        "आया", "आगया", "आये", "लाया", "खरीद", "खरीदा", "डाल", "डालो", "जोड़", "जोड़ो",
+        "आया", "आगया", "आये", "लाया", "खरीद", "खरीदा", "डाल", "डालो", "जोड़", "जोड़ो", "लिख लो", "लिख दो",
         # Telugu
         "వచ్చింది", "చేర్చు", "కలుపు", "చేయ్", "add cheyyi", "cheyyi",
     ],
@@ -33,9 +34,10 @@ INTENT_KEYWORDS = {
         # English
         "remove", "removed", "sold", "sale", "dispatch", "dispatched", "took", "gave",
         # Hindi romanized
-        "becha", "bech", "bikha", "gaya", "nikal", "nikala", "nikalo", "hatao", "remove karo", "remove kro", "de diya", "diya",
+        "becha", "bech", "bikha", "gaya", "nikal", "nikala", "nikalo", "hatao", "remove karo", "remove kro",
+        "de diya", "diya", "de do", "dedo", "de dena",
         # Hindi Devanagari
-        "बेचा", "बेच", "गया", "निकाल", "निकाला", "निकालो", "हटाओ", "दे दिया",
+        "बेचा", "बेच", "गया", "निकाल", "निकाला", "निकालो", "हटाओ", "दे दिया", "दे दो",
         # Telugu
         "అమ్మాను", "తీసేయి", "తీసు", "అమ్మినది", "తీసెయ్యి", "remove cheyyi",
     ],
@@ -137,19 +139,22 @@ class NLPService:
             self._llm_parser = LLMParser()
         return self._llm_parser
 
-    def is_uncertain(self, parsed: ParsedCommand) -> bool:
+    def is_uncertain(self, parsed: ParsedCommand, raw_text: str = "") -> bool:
         """Determines if deterministic parsing was uncertain and would benefit from LLM fallback."""
         if parsed.intent == "UNKNOWN":
             return True
-        if parsed.confidence < 0.6:
+        if parsed.confidence < 0.7:
             return True
         if parsed.intent in ("STOCK_IN", "STOCK_OUT"):
             if not parsed.product_text or parsed.quantity is None:
                 return True
-            if len(parsed.product_text.split()) > 3:
+            if len(parsed.product_text.split()) > 2:
                 return True
         if parsed.intent == "STOCK_QUERY":
-            if not parsed.product_text or len(parsed.product_text.split()) > 3:
+            if not parsed.product_text or len(parsed.product_text.split()) > 2:
+                return True
+        if parsed.intent == "CANCEL" and raw_text:
+            if re.search(r'\d', raw_text) or len(raw_text.split()) > 3:
                 return True
         return False
 
@@ -157,7 +162,7 @@ class NLPService:
         """Parse transcript with deterministic rules first, falling back to LLM if uncertain."""
         deterministic = self.parse_command(transcript, language)
 
-        if not self.is_uncertain(deterministic):
+        if not self.is_uncertain(deterministic, transcript):
             return deterministic
 
         # Deterministic parsing was uncertain — try LLM fallback if configured
@@ -203,8 +208,14 @@ class NLPService:
         working = self._remove_intent_keywords(working, intent)
 
         # 6. Clean up product text
-        # Remove common filler words
-        filler = {"of", "the", "a", "an", "is", "are", "ka", "ke", "ki", "ko", "se", "me", "karo", "no", "price", "please"}
+        # Remove common filler words & conversational address terms
+        filler = {
+            "of", "the", "a", "an", "is", "are", "ka", "ke", "ki", "ko", "se", "me", "mein",
+            "karo", "no", "price", "please", "pls", "bhai", "bhaiya", "bhaiji", "customer",
+            "grahak", "sahab", "sir", "arre", "are", "mera", "meri", "mere", "hum", "hume",
+            "unhe", "unko", "de", "do", "lo", "hai", "hain", "tha", "thi", "gaya", "gayi",
+            "aur", "bhi"
+        }
         words = working.split()
         product_words = [w for w in words if w not in filler and len(w) > 0]
         product_text = " ".join(product_words).strip()
@@ -232,6 +243,10 @@ class NLPService:
             # Sort keywords by length descending to match longer phrases first
             for kw in sorted(keywords, key=len, reverse=True):
                 if re.search(r'(?:^|\s)' + re.escape(kw) + r'(?:\s|$)', text):
+                    # For CANCEL, ignore if text contains digits or known units (indicates correction/command)
+                    if intent_name == "CANCEL":
+                        if re.search(r'\d', text) or any(u in text for u in ("kg", "packet", "bora", "bori", "bag", "carton", "box")):
+                            continue
                     return intent_name
 
         return "UNKNOWN"

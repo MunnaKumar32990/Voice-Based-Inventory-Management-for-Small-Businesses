@@ -80,3 +80,59 @@ async def test_llm_failure_falls_back_to_deterministic():
         # Should gracefully return deterministic result
         assert res.intent == "STOCK_IN"
         assert res.quantity is None
+
+
+@pytest.mark.asyncio
+async def test_real_world_shop_phrases():
+    nlp = NLPService()
+
+    # 1. "bhai rice ka 2 bora aaya hai"
+    p1 = await nlp.parse_command_with_fallback("bhai rice ka 2 bora aaya hai")
+    assert p1.intent == "STOCK_IN"
+    assert p1.product_text == "rice"
+    assert p1.quantity == Decimal(2)
+    assert p1.unit == "bag"
+
+    # 2. "rice do bora de do"
+    p2 = await nlp.parse_command_with_fallback("rice do bora de do")
+    assert p2.intent == "STOCK_OUT"
+    assert p2.product_text == "rice"
+    assert p2.quantity == Decimal(2)
+    assert p2.unit == "bag"
+
+    # 3. "5 kilo chawal likh lo"
+    p3 = await nlp.parse_command_with_fallback("5 kilo chawal likh lo")
+    assert p3.intent == "STOCK_IN"
+    assert p3.product_text == "chawal"
+    assert p3.quantity == Decimal(5)
+    assert p3.unit == "kg"
+
+    # 4. "customer ko 3 packet sugar de diya"
+    p4 = await nlp.parse_command_with_fallback("customer ko 3 packet sugar de diya")
+    assert p4.intent == "STOCK_OUT"
+    assert p4.product_text == "sugar"
+    assert p4.quantity == Decimal(3)
+    assert p4.unit == "packet"
+
+    # 5. "rice mein aadha quintal aaya"
+    p5 = await nlp.parse_command_with_fallback("rice mein aadha quintal aaya")
+    assert p5.intent == "STOCK_IN"
+    assert p5.product_text == "rice"
+    assert p5.quantity == Decimal("0.5")
+    assert p5.unit == "quintal"
+
+    # 6. "20 ka biscuit nahi, 10 packet" (negation/correction -> triggers LLM fallback)
+    with patch.object(nlp.llm_parser, "parse_fallback", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = ParsedCommand(
+            intent="STOCK_IN",
+            product_text="biscuit",
+            quantity=Decimal(10),
+            unit="packet",
+            confidence=0.95,
+        )
+        p6 = await nlp.parse_command_with_fallback("20 ka biscuit nahi, 10 packet")
+        assert p6.intent == "STOCK_IN"
+        assert p6.product_text == "biscuit"
+        assert p6.quantity == Decimal(10)
+        assert p6.unit == "packet"
+
