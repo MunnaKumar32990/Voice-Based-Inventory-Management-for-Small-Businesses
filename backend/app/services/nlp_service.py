@@ -121,11 +121,54 @@ _UNIT_VARIANTS = sorted(UNIT_ALIASES.keys(), key=len, reverse=True)
 
 
 class NLPService:
-    """Deterministic NLP parser for inventory voice commands.
+    """Deterministic NLP parser for inventory voice commands, with optional LLM fallback.
     
     Extracts intent, product, quantity, unit, and price from natural
     language input in English, Hindi, and Telugu (including code-mixing).
     """
+
+    def __init__(self):
+        self._llm_parser = None
+
+    @property
+    def llm_parser(self):
+        if self._llm_parser is None:
+            from app.services.llm_parser import LLMParser
+            self._llm_parser = LLMParser()
+        return self._llm_parser
+
+    def is_uncertain(self, parsed: ParsedCommand) -> bool:
+        """Determines if deterministic parsing was uncertain and would benefit from LLM fallback."""
+        if parsed.intent == "UNKNOWN":
+            return True
+        if parsed.confidence < 0.6:
+            return True
+        if parsed.intent in ("STOCK_IN", "STOCK_OUT"):
+            if not parsed.product_text or parsed.quantity is None:
+                return True
+            if len(parsed.product_text.split()) > 3:
+                return True
+        if parsed.intent == "STOCK_QUERY":
+            if not parsed.product_text or len(parsed.product_text.split()) > 3:
+                return True
+        return False
+
+    async def parse_command_with_fallback(self, transcript: str, language: str = "en") -> ParsedCommand:
+        """Parse transcript with deterministic rules first, falling back to LLM if uncertain."""
+        deterministic = self.parse_command(transcript, language)
+
+        if not self.is_uncertain(deterministic):
+            return deterministic
+
+        # Deterministic parsing was uncertain — try LLM fallback if configured
+        if self.llm_parser.is_configured:
+            llm_result = await self.llm_parser.parse_fallback(transcript, language)
+            if llm_result:
+                # Use LLM result if it provided a clearer interpretation
+                if llm_result.intent != "UNKNOWN" or deterministic.intent == "UNKNOWN":
+                    return llm_result
+
+        return deterministic
 
     def parse_command(self, transcript: str, language: str = "en") -> ParsedCommand:
         text = transcript.strip()

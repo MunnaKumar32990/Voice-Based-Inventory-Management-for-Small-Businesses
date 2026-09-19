@@ -113,8 +113,8 @@ async def handle_voice_command(
     # Detect speech dialect (e.g. hinglish, telugish, hi_deva, te_script, en)
     detected_lang = detect_speech_dialect(req.transcript, req.language)
 
-    # 1. Parse the transcript
-    parsed = nlp.parse_command(req.transcript, detected_lang)
+    # 1. Parse the transcript (deterministic first, LLM fallback if uncertain)
+    parsed = await nlp.parse_command_with_fallback(req.transcript, detected_lang)
 
     # 2. Handle query intents directly (no confirmation needed)
     if parsed.intent == "LOW_STOCK_QUERY":

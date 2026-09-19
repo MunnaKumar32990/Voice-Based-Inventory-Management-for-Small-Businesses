@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     AZURE_SPEECH_REGION: str = ""
     MAX_AUDIO_MB: int = 10
 
+    # Gemini LLM Fallback (when deterministic voice parsing is uncertain)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-flash-latest"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors(cls, v: Any) -> List[str]:
